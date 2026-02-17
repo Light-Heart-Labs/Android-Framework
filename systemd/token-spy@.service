@@ -1,5 +1,5 @@
 [Unit]
-Description=Android Framework - Token Spy (%i)
+Description=Lighthouse AI - Token Spy (%i)
 After=network.target
 
 [Service]

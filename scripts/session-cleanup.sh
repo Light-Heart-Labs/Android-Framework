@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# Android Framework - Session Cleanup Script
-# https://github.com/Light-Heart-Labs/Android-Framework
+# Lighthouse AI - Session Cleanup Script
+# https://github.com/Light-Heart-Labs/Lighthouse-AI
 #
 # Prevents context overflow crashes by automatically managing
 # session file lifecycle. When a session file exceeds the size

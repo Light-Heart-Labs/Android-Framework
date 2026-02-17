@@ -1,0 +1,63 @@
+# Dream Server — Nano Tier
+# 8GB+ RAM, no GPU required — 1-3B models, text-only
+# Usage: docker compose -f docker-compose.nano.yml up -d
+#
+# Note: Voice features disabled (no GPU for real-time STT/TTS)
+# Use text chat via API or dashboard
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # LLM — Qwen2.5-1.5B via llama.cpp (CPU)
+  # ═══════════════════════════════════════════════════════════════
+  llama:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: dream-llama
+    ports:
+      - "8000:8080"
+    volumes:
+      - ${MODELS_DIR:-~/.cache/models}:/models
+    command: >
+      --model /models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+      --ctx-size 8192
+      --n-gpu-layers 0
+      --threads 4
+      --host 0.0.0.0
+      --port 8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # Dashboard + API (no voice features)
+  # ═══════════════════════════════════════════════════════════════
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dream-dashboard
+    ports:
+      - "3001:3001"
+    environment:
+      - VITE_API_URL=http://localhost:3002
+      - VITE_VOICE_ENABLED=false
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: dream-api
+    ports:
+      - "3002:3002"
+    environment:
+      - LLM_URL=http://llama:8080
+      - VOICE_ENABLED=false
+    depends_on:
+      - llama
+    restart: unless-stopped

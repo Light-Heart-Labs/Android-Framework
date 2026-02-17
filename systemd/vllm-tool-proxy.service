@@ -1,5 +1,5 @@
 [Unit]
-Description=Android Framework - vLLM Tool Call Proxy
+Description=Lighthouse AI - vLLM Tool Call Proxy
 After=network.target docker.service
 Wants=docker.service
 

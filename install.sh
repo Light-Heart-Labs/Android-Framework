@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# Android Framework - Installer
-# https://github.com/Light-Heart-Labs/Android-Framework
+# Lighthouse AI - Installer
+# https://github.com/Light-Heart-Labs/Lighthouse-AI
 #
 # Usage:
 #   ./install.sh                      # Interactive install
@@ -9,6 +9,7 @@
 #   ./install.sh --cleanup-only       # Only install session cleanup
 #   ./install.sh --proxy-only         # Only install tool proxy
 #   ./install.sh --token-spy-only     # Only install Token Spy API monitor
+#   ./install.sh --cold-storage-only  # Only install LLM Cold Storage timer
 #   ./install.sh --uninstall          # Remove everything
 # ═══════════════════════════════════════════════════════════════
 
@@ -19,6 +20,7 @@ CONFIG_FILE="$SCRIPT_DIR/config.yaml"
 CLEANUP_ONLY=false
 PROXY_ONLY=false
 TOKEN_SPY_ONLY=false
+COLD_STORAGE_ONLY=false
 UNINSTALL=false
 
 # ── Colors ─────────────────────────────────────────────────────
@@ -41,6 +43,7 @@ while [[ $# -gt 0 ]]; do
         --cleanup-only)   CLEANUP_ONLY=true; shift ;;
         --proxy-only)     PROXY_ONLY=true; shift ;;
         --token-spy-only) TOKEN_SPY_ONLY=true; shift ;;
+        --cold-storage-only) COLD_STORAGE_ONLY=true; shift ;;
         --uninstall)      UNINSTALL=true; shift ;;
         -h|--help)
             echo "Usage: ./install.sh [options]"
@@ -50,6 +53,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --cleanup-only      Only install session cleanup"
             echo "  --proxy-only        Only install vLLM tool proxy"
             echo "  --token-spy-only    Only install Token Spy API monitor"
+            echo "  --cold-storage-only Only install LLM Cold Storage timer"
             echo "  --uninstall         Remove all installed components"
             echo "  -h, --help          Show this help"
             exit 0
@@ -61,7 +65,7 @@ done
 # ── Banner ─────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  Android Framework - Installer${NC}"
+echo -e "${CYAN}  Lighthouse AI - Installer${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
@@ -136,6 +140,14 @@ TS_SESSION_CHAR_LIMIT=$(parse_yaml "token_spy.session_char_limit" "200000")
 TS_AGENT_SESSION_DIRS=$(parse_yaml "token_spy.agent_session_dirs" "")
 TS_LOCAL_MODEL_AGENTS=$(parse_yaml "token_spy.local_model_agents" "")
 
+# LLM Cold Storage settings
+CS_ENABLED=$(parse_yaml "llm_cold_storage.enabled" "false")
+CS_HF_CACHE=$(parse_yaml "llm_cold_storage.hf_cache_dir" "~/.cache/huggingface/hub")
+CS_HF_CACHE="${CS_HF_CACHE/#\~/$HOME}"
+CS_COLD_DIR=$(parse_yaml "llm_cold_storage.cold_dir" "~/llm-cold-storage")
+CS_COLD_DIR="${CS_COLD_DIR/#\~/$HOME}"
+CS_MAX_IDLE_DAYS=$(parse_yaml "llm_cold_storage.max_idle_days" "7")
+
 # System user
 SYSTEM_USER=$(parse_yaml "system_user" "")
 if [ -z "$SYSTEM_USER" ]; then
@@ -157,11 +169,14 @@ fi
 if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ]; then
     info "  Token Spy:        $([ "$TS_ENABLED" = "true" ] && echo "enabled on :$TS_PORT ($TS_AGENT_NAME)" || echo "disabled")"
 fi
+if [ "$COLD_STORAGE_ONLY" = true ] || ([ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ]); then
+    info "  Cold Storage:     $([ "$CS_ENABLED" = "true" ] && echo "enabled (idle >${CS_MAX_IDLE_DAYS}d → $CS_COLD_DIR)" || echo "disabled")"
+fi
 echo ""
 
 # ── Uninstall ──────────────────────────────────────────────────
 if [ "$UNINSTALL" = true ]; then
-    info "Uninstalling Android Framework..."
+    info "Uninstalling Lighthouse AI..."
 
     if systemctl is-active --quiet openclaw-session-cleanup.timer 2>/dev/null; then
         sudo systemctl stop openclaw-session-cleanup.timer
@@ -186,6 +201,16 @@ if [ "$UNINSTALL" = true ]; then
     done
     sudo rm -f /etc/systemd/system/token-spy@.service
 
+    # LLM Cold Storage
+    if systemctl --user is-active --quiet llm-cold-storage.timer 2>/dev/null; then
+        systemctl --user stop llm-cold-storage.timer
+        systemctl --user disable llm-cold-storage.timer
+        ok "Stopped cold storage timer"
+    fi
+    rm -f "$HOME/.config/systemd/user/llm-cold-storage.service"
+    rm -f "$HOME/.config/systemd/user/llm-cold-storage.timer"
+    systemctl --user daemon-reload 2>/dev/null || true
+
     sudo systemctl daemon-reload
     rm -f "$OPENCLAW_DIR/session-cleanup.sh"
 
@@ -196,20 +221,24 @@ fi
 # ── Preflight checks ──────────────────────────────────────────
 info "Running preflight checks..."
 
-# Check for OpenClaw
-if [ ! -d "$OPENCLAW_DIR" ]; then
-    err "OpenClaw directory not found: $OPENCLAW_DIR"
-    err "Is OpenClaw installed? Edit openclaw_dir in config.yaml"
-    exit 1
+# Check for OpenClaw (not needed for cold-storage-only)
+if [ "$COLD_STORAGE_ONLY" = false ]; then
+    if [ ! -d "$OPENCLAW_DIR" ]; then
+        err "OpenClaw directory not found: $OPENCLAW_DIR"
+        err "Is OpenClaw installed? Edit openclaw_dir in config.yaml"
+        exit 1
+    fi
+    ok "OpenClaw directory found: $OPENCLAW_DIR"
 fi
-ok "OpenClaw directory found: $OPENCLAW_DIR"
 
-# Check for python3
-if ! command -v python3 &>/dev/null; then
-    err "python3 not found. Install Python 3 first."
-    exit 1
+# Check for python3 (not needed for cold-storage-only)
+if [ "$COLD_STORAGE_ONLY" = false ]; then
+    if ! command -v python3 &>/dev/null; then
+        err "python3 not found. Install Python 3 first."
+        exit 1
+    fi
+    ok "Python 3 found: $(python3 --version 2>&1)"
 fi
-ok "Python 3 found: $(python3 --version 2>&1)"
 
 # Check for systemd
 if ! command -v systemctl &>/dev/null; then
@@ -405,6 +434,46 @@ TSENV
     fi
 fi
 
+# ── Install LLM Cold Storage ────────────────────────────────
+if ([ "$COLD_STORAGE_ONLY" = true ] || ([ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ])) && [ "$CS_ENABLED" = "true" ]; then
+    info "Installing LLM Cold Storage..."
+
+    if [ ! -f "$SCRIPT_DIR/scripts/llm-cold-storage.sh" ]; then
+        err "scripts/llm-cold-storage.sh not found"
+        exit 1
+    fi
+
+    chmod +x "$SCRIPT_DIR/scripts/llm-cold-storage.sh"
+    ok "Cold storage script: $SCRIPT_DIR/scripts/llm-cold-storage.sh"
+
+    # Install systemd user timer
+    if [ "$HAS_SYSTEMD" = true ]; then
+        mkdir -p "$HOME/.config/systemd/user"
+
+        # Service — patch in config values
+        cp "$SCRIPT_DIR/systemd/llm-cold-storage.service" "$HOME/.config/systemd/user/"
+        sed -i "s|%h/Lighthouse-AI/scripts|$SCRIPT_DIR/scripts|g" "$HOME/.config/systemd/user/llm-cold-storage.service"
+        sed -i "s|%h/.cache/huggingface/hub|$CS_HF_CACHE|g" "$HOME/.config/systemd/user/llm-cold-storage.service"
+        sed -i "s|%h/llm-cold-storage|$CS_COLD_DIR|g" "$HOME/.config/systemd/user/llm-cold-storage.service"
+        # Remove User=%i (not needed for user services)
+        sed -i '/^User=%i/d' "$HOME/.config/systemd/user/llm-cold-storage.service"
+
+        # Timer
+        cp "$SCRIPT_DIR/systemd/llm-cold-storage.timer" "$HOME/.config/systemd/user/"
+
+        systemctl --user daemon-reload
+        systemctl --user enable llm-cold-storage.timer
+        systemctl --user start llm-cold-storage.timer
+
+        ok "Cold storage timer enabled (daily at 2am)"
+        info "  Dry-run first: $SCRIPT_DIR/scripts/llm-cold-storage.sh"
+        info "  Execute:       $SCRIPT_DIR/scripts/llm-cold-storage.sh --execute"
+    else
+        info "No systemd. Run manually:"
+        info "  HF_CACHE=$CS_HF_CACHE COLD_DIR=$CS_COLD_DIR $SCRIPT_DIR/scripts/llm-cold-storage.sh --execute"
+    fi
+fi
+
 # ── OpenClaw Config Reminder ──────────────────────────────────
 echo ""
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
@@ -451,6 +520,10 @@ if [ "$HAS_SYSTEMD" = true ]; then
         echo "  systemctl status token-spy@${TS_AGENT_NAME}                 # Check Token Spy"
         echo "  journalctl -u token-spy@${TS_AGENT_NAME} -f                 # Watch Token Spy logs"
         echo "  curl http://localhost:${TS_PORT}/health                     # Test Token Spy health"
+    fi
+    if [ "$CS_ENABLED" = "true" ] && ([ "$COLD_STORAGE_ONLY" = true ] || ([ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ])); then
+        echo "  systemctl --user status llm-cold-storage.timer              # Check cold storage timer"
+        echo "  systemctl --user list-timers llm-cold-storage.timer         # Next run time"
     fi
 fi
 echo ""

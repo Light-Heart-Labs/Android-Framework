@@ -295,4 +295,4 @@ The patterns compose well. Each addresses a different failure mode, and each is 
 
 ---
 
-*These patterns will evolve. If you discover improvements, [open an issue](https://github.com/Light-Heart-Labs/Android-Framework/issues).*
+*These patterns will evolve. If you discover improvements, [open an issue](https://github.com/Light-Heart-Labs/Lighthouse-AI/issues).*

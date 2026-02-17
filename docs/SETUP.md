@@ -348,3 +348,12 @@ To connect your agent to Discord, add a `channels` section to `openclaw.json`:
 
 Set `requireMention: false` for channels where the agent should respond to
 every message, or `true` for channels where it only responds when @mentioned.
+
+---
+
+## Further Reading
+
+- [Cookbook recipes](cookbook/README.md) — Step-by-step guides for voice agents,
+  document Q&A, code assistants, multi-GPU clusters, and more
+- [research/HARDWARE-GUIDE.md](research/HARDWARE-GUIDE.md) — GPU buying guide
+  with tier rankings, used market analysis, and price-performance comparisons

@@ -52,8 +52,8 @@ Each reset cycle:
 
 ```bash
 # Clone the repo
-git clone https://github.com/Light-Heart-Labs/Android-Framework.git
-cd Android-Framework/memory-shepherd
+git clone https://github.com/Light-Heart-Labs/Lighthouse-AI.git
+cd Lighthouse-AI/memory-shepherd
 
 # Create your config from the example
 cp memory-shepherd.conf.example memory-shepherd.conf

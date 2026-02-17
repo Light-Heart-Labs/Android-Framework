@@ -1,4 +1,4 @@
-# Android Framework
+# Lighthouse AI
 
 **Operations toolkit for persistent LLM agents — process watchdog, session cleanup, memory reset, API cost monitoring, and tool call proxy.**
 
@@ -31,6 +31,9 @@ what you're building.
 | [Memory Shepherd](#memory-shepherd) | Periodic memory reset to prevent agent drift | No (any markdown-based agent memory) | Linux |
 | [Golden Configs](#golden-configs) | Working config templates for OpenClaw + vLLM | Yes | Any |
 | [Workspace Templates](#workspace-templates) | Agent personality/identity starter files | Yes | Any |
+| [LLM Cold Storage](#llm-cold-storage) | Archive idle HuggingFace models to free disk | No | Linux |
+| [Docker Compose Stacks](#docker-compose-stacks) | One-command deployment (nano/pro tiers) | No | Any |
+| [Cookbook Recipes](#cookbook-recipes) | Step-by-step guides: voice, RAG, code, privacy, multi-GPU, swarms | No | Linux |
 
 ---
 
@@ -48,6 +51,9 @@ any framework.
 | [MULTI-AGENT-PATTERNS.md](docs/MULTI-AGENT-PATTERNS.md) | Coordination protocols, reliability math, sub-agent spawning, echo chamber prevention, supervisor pattern |
 | [OPERATIONAL-LESSONS.md](docs/OPERATIONAL-LESSONS.md) | Silent failures, memory management, tool calling reliability, production safety, background GPU automation |
 | [GUARDIAN.md](docs/GUARDIAN.md) | Infrastructure protection, autonomy tiers, immutable watchdogs, defense in depth |
+| [Cookbook Recipes](docs/cookbook/) | **Practical step-by-step guides** — voice agents, RAG, code assistant, privacy proxy, multi-GPU, swarms, n8n |
+| [Research](docs/research/) | Hardware buying guide, GPU TTS benchmarks, open-source model landscape |
+| [Token Monitor Scope](docs/TOKEN-MONITOR-PRODUCT-SCOPE.md) | Token Spy product roadmap, competitive analysis, pricing strategy |
 
 ### The Reference Implementation (OpenClaw + vLLM)
 
@@ -128,8 +134,8 @@ For the rationale behind every design choice: **[docs/DESIGN-DECISIONS.md](docs/
 ### Option 1: Full Install (Session Cleanup + Proxy)
 
 ```bash
-git clone https://github.com/Light-Heart-Labs/Android-Framework.git
-cd Android-Framework
+git clone https://github.com/Light-Heart-Labs/Lighthouse-AI.git
+cd Lighthouse-AI
 
 # Edit config for your setup
 nano config.yaml
@@ -200,6 +206,41 @@ cd memory-shepherd
 cp memory-shepherd.conf.example memory-shepherd.conf
 nano memory-shepherd.conf   # Define your agents and baselines
 sudo ./install.sh           # Installs as systemd timer
+```
+
+### Option 6: Docker Compose (Full Stack)
+
+Deploy a complete local AI stack with one command. Choose your tier:
+
+```bash
+cd compose
+cp .env.example .env
+nano .env                              # Set your secrets
+
+# Pro tier (24GB+ VRAM — vLLM, Whisper, TTS, voice agent, dashboard)
+docker compose -f docker-compose.pro.yml up -d
+
+# Nano tier (CPU only — llama.cpp, dashboard, no voice)
+docker compose -f docker-compose.nano.yml up -d
+```
+
+### Option 7: LLM Cold Storage
+
+Archive HuggingFace models idle for 7+ days to free disk space. Models stay resolvable via symlink.
+
+```bash
+# Dry run (shows what would be archived)
+./scripts/llm-cold-storage.sh
+
+# Execute for real
+./scripts/llm-cold-storage.sh --execute
+
+# Check status
+./scripts/llm-cold-storage.sh --status
+
+# Install as daily systemd timer
+cp systemd/llm-cold-storage.service systemd/llm-cold-storage.timer ~/.config/systemd/user/
+systemctl --user enable --now llm-cold-storage.timer
 ```
 
 ---
@@ -332,7 +373,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full deep dive.
 ## Project Structure
 
 ```
-Android-Framework/
+Lighthouse-AI/
 ├── config.yaml                         # Configuration (edit this first)
 ├── install.sh                          # Linux installer
 ├── install.ps1                         # Windows installer
@@ -343,8 +384,13 @@ Android-Framework/
 ├── scripts/
 │   ├── session-cleanup.sh              # Session watchdog script
 │   ├── vllm-tool-proxy.py             # vLLM tool call proxy (v4)
+│   ├── llm-cold-storage.sh            # Archive idle HuggingFace models
 │   ├── start-vllm.sh                  # Start vLLM via Docker
 │   └── start-proxy.sh                 # Start the tool call proxy
+├── compose/
+│   ├── docker-compose.pro.yml         # Full GPU stack (vLLM + voice + dashboard)
+│   ├── docker-compose.nano.yml        # CPU-only minimal stack
+│   └── .env.example                   # Environment template
 ├── token-spy/                          # API cost & usage monitor
 │   ├── main.py                        # Proxy server + embedded dashboard
 │   ├── db.py                          # SQLite storage layer
@@ -363,7 +409,9 @@ Android-Framework/
 │   ├── openclaw-session-cleanup.service
 │   ├── openclaw-session-cleanup.timer
 │   ├── vllm-tool-proxy.service
-│   └── token-spy@.service             # Token Spy (templated per-agent)
+│   ├── token-spy@.service             # Token Spy (templated per-agent)
+│   ├── llm-cold-storage.service       # Model archival (oneshot)
+│   └── llm-cold-storage.timer         # Daily trigger for cold storage
 ├── memory-shepherd/                    # Periodic memory reset for agents
 │   ├── memory-shepherd.sh             # Config-driven reset script
 │   ├── memory-shepherd.conf.example   # Example agent config
@@ -385,9 +433,23 @@ Android-Framework/
 │   ├── SETUP.md                       # Full local setup guide
 │   ├── ARCHITECTURE.md                # How it all fits together
 │   ├── TOKEN-SPY.md                   # Token Spy setup & API reference
+│   ├── TOKEN-MONITOR-PRODUCT-SCOPE.md # Token Spy product roadmap & competitive analysis
 │   ├── OPERATIONAL-LESSONS.md         # Hard-won lessons from 24/7 agent ops
 │   ├── MULTI-AGENT-PATTERNS.md        # Coordination, swarms, and reliability
-│   └── GUARDIAN.md                    # Infrastructure protection & autonomy tiers
+│   ├── GUARDIAN.md                    # Infrastructure protection & autonomy tiers
+│   ├── cookbook/                       # Step-by-step practical recipes
+│   │   ├── 01-voice-agent-setup.md    #   Whisper + vLLM + Kokoro
+│   │   ├── 02-document-qa-setup.md    #   RAG with Qdrant/ChromaDB
+│   │   ├── 03-code-assistant-setup.md #   Tool-calling code agent
+│   │   ├── 04-privacy-proxy-setup.md  #   PII-stripping API proxy
+│   │   ├── 05-multi-gpu-cluster.md    #   Multi-node load balancing
+│   │   ├── 06-swarm-patterns.md       #   Sub-agent parallelization
+│   │   ├── 08-n8n-local-llm.md        #   Workflow automation
+│   │   └── agent-template-code.md     #   Agent template with debugging protocol
+│   └── research/                      # Technical research & benchmarks
+│       ├── HARDWARE-GUIDE.md          #   GPU buying guide with real prices
+│       ├── GPU-TTS-BENCHMARK.md       #   TTS latency benchmarks
+│       └── OSS-MODEL-LANDSCAPE-2026-02.md  # Open-source model comparison
 └── LICENSE
 ```
 
@@ -461,6 +523,8 @@ See [docs/SETUP.md](docs/SETUP.md) for the full troubleshooting guide. Quick hit
 - **[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md)** — Why we made the choices we did: session limits, ping cycles, deterministic supervision, and more
 - **[docs/PATTERNS.md](docs/PATTERNS.md)** — Six transferable patterns for autonomous agent systems, applicable to any framework
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Deep dive on the vLLM Tool Call Proxy internals
+- **[docs/cookbook/](docs/cookbook/)** — Practical step-by-step recipes for voice, RAG, code, privacy, multi-GPU, swarms, and workflow automation
+- **[docs/research/](docs/research/)** — Hardware guide, GPU benchmarks, open-source model landscape
 - **Android-Labs** (private) — Proof of work: 3,464 commits from 3 AI agents in 8 days
 
 ---

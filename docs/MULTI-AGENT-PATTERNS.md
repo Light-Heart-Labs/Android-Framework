@@ -96,125 +96,20 @@ Don't use redundancy for:
 
 ## Sub-Agent Spawning
 
-### Task Templates That Work
+Sub-agent spawning is the most powerful parallelization primitive for local
+agents. The key insights:
 
-The difference between a 30% and 90% success rate often comes down to how the
-task is written.
+- **Task templates matter more than model quality** — the difference between
+  30% and 90% success rates is how the task is written (numbered steps,
+  absolute paths, stop prompts)
+- **One question per agent** — fan out N focused tasks, aggregate results
+- **Timeouts are mandatory** — without them, local models loop indefinitely
+- **Resource-aware spawning** — 5-8 concurrent agents is the sweet spot on a
+  single GPU; beyond 12, timeouts become likely
 
-**High success (~90%):**
-
-```
-You are a [ROLE] agent.
-
-Complete ALL of these steps:
-
-1. Run: ssh user@192.168.0.100 "[COMMAND_1]"
-2. Run: ssh user@192.168.0.100 "[COMMAND_2]"
-3. Run: ssh user@192.168.0.100 "[COMMAND_3]"
-4. Write ALL findings to: /absolute/path/to/output.md
-
-Include raw command outputs. Do not summarize or omit.
-Do not stop until the file is written.
-Reply "Done". Do not output JSON. Do not loop.
-```
-
-**What makes it work:**
-1. Explicit commands (not "check the system" — actual commands to run)
-2. Numbered steps (1, 2, 3 — not prose paragraphs)
-3. Absolute file paths (not relative, not "save it somewhere")
-4. Reinforcement ("do not stop until the file is written")
-5. Stop prompt ("Reply Done. Do not output JSON. Do not loop.")
-6. Single focus (one role, one objective)
-
-**Low success (~30-40%):**
-- Indirect instructions: "SSH as: user@host" instead of "Run: ssh user@host ..."
-- Ambiguous scope: "Document all security configuration"
-- Multi-server tasks: "Check both server A and server B"
-- Open-ended exploration: "Look around and report what you find"
-- Complex conditional logic in a single task
-
-### When to Spawn vs. Do Directly
-
-**Rule of thumb:** If you can write the task as one clear sentence with no
-"and then," it's spawn-able.
-
-| Spawn | Do Directly |
-|---|---|
-| Pure research, multiple independent questions | Needs tool execution with complex chains |
-| Repetitive validation across artifacts | Time-sensitive, need it now |
-| Document generation from clear templates | Complex multi-step workflows |
-| Data gathering, parallel searches | Tasks requiring decisions mid-execution |
-
-### Resource Management
-
-Each sub-agent consumes GPU memory. On a single GPU:
-
-| GPU Load | Concurrent Agents | Recommendation |
-|---|---|---|
-| Light | 1-4 | Fast, reliable |
-| Medium | 5-8 | Good throughput, optimal sweet spot |
-| Heavy | 9-12 | Some queuing expected |
-| Overloaded | 13+ | Timeouts likely |
-
-**Pre-spawn health check:**
-```bash
-# Check VRAM before spawning
-curl localhost:9199/status | jq '.nodes[].vram_percent'
-# If > 90%, defer spawning or use a lighter approach
-```
-
-**Timeouts are mandatory.** Without `runTimeoutSeconds`, local models can loop
-indefinitely. Recommended values:
-
-| Task Complexity | Timeout |
-|---|---|
-| Simple (file write, single command) | 60s |
-| Multi-step (3-5 actions) | 120s |
-| Complex research | 180s |
-
-### Spawning Patterns
-
-**Pattern 1: Research Fan-Out**
-
-Spawn N agents, each with one focused question. Each writes findings to a
-specific file. Coordinator aggregates.
-
-```
-Coordinator
-  ├── Agent 1: "What are the top 3 embedding models for code search?"
-  │                → writes to /tmp/research/embeddings.md
-  ├── Agent 2: "What vector databases support hybrid search?"
-  │                → writes to /tmp/research/vector-dbs.md
-  └── Agent 3: "What's the state of the art in code chunking?"
-                   → writes to /tmp/research/chunking.md
-```
-
-**Constraint:** Each agent gets ONE question. Don't overload.
-
-**Pattern 2: Validation Sweep**
-
-Define validation criteria. Spawn one agent per artifact. Agents report
-pass/fail with specific issues.
-
-Good for: testing multiple configs, validating documentation accuracy,
-checking multiple endpoints.
-
-**Pattern 3: Document Generation**
-
-Define a template. Spawn agents with specific content assignments. Works well
-for API docs, how-to guides, research summaries.
-
-Fails for: docs requiring tool execution, cross-file coordination, or content
-that depends on other agents' output.
-
-### Anti-Patterns
-
-| Anti-Pattern | Why It Fails |
-|---|---|
-| Tool-heavy sub-agents | Local models output tool calls as plain text JSON |
-| Overloaded task scope | Too many objectives = shallow coverage on all of them |
-| Cross-agent dependencies | Sub-agents can't read each other's output mid-run |
-| Long-running complex chains | Multi-step workflows with decision points derail |
+For the full treatment — task templates, spawning patterns, resource management
+tables, and anti-patterns — see
+[cookbook/06-swarm-patterns.md](cookbook/06-swarm-patterns.md).
 
 ---
 
