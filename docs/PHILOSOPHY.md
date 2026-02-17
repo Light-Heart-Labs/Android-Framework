@@ -224,7 +224,14 @@ Read the single-agent path first, then:
 
 5. [MULTI-AGENT-PATTERNS.md](MULTI-AGENT-PATTERNS.md) — Coordination,
    swarms, redundancy, the supervisor pattern
-6. [GUARDIAN.md](GUARDIAN.md) — Infrastructure protection and autonomy tiers
+6. [cookbook/06-swarm-patterns.md](cookbook/06-swarm-patterns.md) — Hands-on
+   sub-agent spawning patterns with code examples
+7. [GUARDIAN.md](GUARDIAN.md) — Infrastructure protection and autonomy tiers
+
+### "I want to build something specific"
+
+Browse the [Cookbook](cookbook/README.md) — step-by-step recipes for voice
+agents, document Q&A, code assistants, multi-GPU clusters, and more.
 
 ### "I want to understand the theory without building anything"
 
@@ -314,11 +321,21 @@ PHILOSOPHY.md (you are here)
   ├── Infrastructure & Safety
   │     └── GUARDIAN.md                      — Watchdogs, autonomy tiers, protection
   │
+  ├── Cookbook (cookbook/)                     — Step-by-step build recipes
+  │     ├── 01-voice-agent-setup.md          — Whisper + vLLM + Kokoro pipeline
+  │     ├── 05-multi-gpu-cluster.md          — Multi-GPU cluster guide
+  │     └── 06-swarm-patterns.md             — Sub-agent parallelization patterns
+  │
+  ├── Research (research/)                   — Benchmarks and hardware analysis
+  │     ├── HARDWARE-GUIDE.md                — GPU buying guide
+  │     └── OSS-MODEL-LANDSCAPE-2026-02.md   — Open-source model comparison
+  │
   └── Reference Implementation (OpenClaw + vLLM)
         ├── README.md                        — Toolkit overview and quick start
         ├── ARCHITECTURE.md                  — How OpenClaw talks to vLLM
         ├── SETUP.md                         — Step-by-step local deployment
-        └── TOKEN-SPY.md                     — Cost monitoring setup and API
+        ├── TOKEN-SPY.md                     — Cost monitoring setup and API
+        └── TOKEN-MONITOR-PRODUCT-SCOPE.md   — Token Spy product roadmap
 ```
 
 The top three sections are framework-agnostic. The reference implementation

@@ -379,3 +379,14 @@ None of these block agent work — they run during idle windows. If an agent
 needs the GPU, inference requests from the background systems simply queue
 behind the agent's requests (vLLM's continuous batching handles this
 transparently).
+
+---
+
+## Further Reading
+
+- [research/HARDWARE-GUIDE.md](research/HARDWARE-GUIDE.md) — GPU buying guide
+  with tier rankings and price-performance analysis
+- [research/GPU-TTS-BENCHMARK.md](research/GPU-TTS-BENCHMARK.md) — TTS latency
+  benchmarks (GPU vs CPU, concurrency scaling)
+- [research/OSS-MODEL-LANDSCAPE-2026-02.md](research/OSS-MODEL-LANDSCAPE-2026-02.md) —
+  Open-source model comparison with tool-calling success rates

@@ -64,8 +64,8 @@ sudo dnf install python3 curl iproute e2fsprogs psmisc
 
 ```bash
 # Clone (or copy the guardian/ directory)
-git clone https://github.com/Light-Heart-Labs/Android-Framework.git
-cd Android-Framework/guardian
+git clone https://github.com/Light-Heart-Labs/Lighthouse-AI.git
+cd Lighthouse-AI/guardian
 
 # Copy and edit the config
 cp guardian.conf.example guardian.conf

@@ -1,5 +1,5 @@
 [Unit]
-Description=Android Framework - Session Cleanup
+Description=Lighthouse AI - Session Cleanup
 After=network.target docker.service
 
 [Service]

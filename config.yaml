@@ -1,5 +1,5 @@
-# Android Framework - Configuration
-# https://github.com/Light-Heart-Labs/Android-Framework
+# Lighthouse AI - Configuration
+# https://github.com/Light-Heart-Labs/Lighthouse-AI
 
 # ─────────────────────────────────────────────
 # Session Cleanup Settings
@@ -98,6 +98,27 @@ token_spy:
 
   # Agents using local/self-hosted models (comma-separated, get $0 cost badge)
   local_model_agents: ""
+
+# ─────────────────────────────────────────────
+# LLM Cold Storage
+# ─────────────────────────────────────────────
+llm_cold_storage:
+  # Archive HuggingFace models not accessed in N days to cold storage.
+  # Symlinks preserve cache resolution. Safe: dry-run by default.
+  enabled: false
+
+  # HuggingFace cache directory
+  hf_cache_dir: "~/.cache/huggingface/hub"
+
+  # Where to move archived models
+  cold_dir: "~/llm-cold-storage"
+
+  # Archive models idle for this many days
+  max_idle_days: 7
+
+  # Models to never archive (HuggingFace cache directory names)
+  # Example: ["models--Qwen--Qwen3-Coder-Next-FP8"]
+  protected_models: []
 
 # ─────────────────────────────────────────────
 # System User

@@ -244,3 +244,11 @@ token-spy/providers/
 ```
 
 Add new providers by subclassing `LLMProvider` and decorating with `@register_provider("name")`.
+
+---
+
+## Further Reading
+
+- [TOKEN-MONITOR-PRODUCT-SCOPE.md](TOKEN-MONITOR-PRODUCT-SCOPE.md) — Product
+  roadmap, architecture decisions, and the vision for Token Spy as a standalone
+  monitoring product
