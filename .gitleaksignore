@@ -1,0 +1,5 @@
+# Gitleaks ignore file
+# Add fingerprints of known false positives here (one per line)
+# Get fingerprints from gitleaks output when a false positive is detected
+#
+# Example: abc123def456...

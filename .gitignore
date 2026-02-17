@@ -23,8 +23,21 @@ config.yaml.bak
 *.tmp
 *.swp
 
+# Secrets and credentials (global)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+credentials.*
+secrets.*
+secrets/
+*.keystore
+
 # Token Spy runtime
-token-spy/.env
 token-spy/data/
 token-spy/*.db
 token-spy/*.sqlite
