@@ -1,5 +1,5 @@
 [Unit]
-Description=LightHeart OpenClaw - Session Cleanup every __INTERVAL__ minutes
+Description=Android Framework - Session Cleanup every __INTERVAL__ minutes
 
 [Timer]
 OnBootSec=__BOOT_DELAY__min

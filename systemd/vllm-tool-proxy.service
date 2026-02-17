@@ -1,5 +1,5 @@
 [Unit]
-Description=LightHeart OpenClaw - vLLM Tool Call Proxy
+Description=Android Framework - vLLM Tool Call Proxy
 After=network.target docker.service
 Wants=docker.service
 

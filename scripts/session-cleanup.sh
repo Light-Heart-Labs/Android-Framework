@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# LightHeart OpenClaw - Session Cleanup Script
-# https://github.com/Light-Heart-Labs/LightHeart-OpenClaw
+# Android Framework - Session Cleanup Script
+# https://github.com/Light-Heart-Labs/Android-Framework
 #
 # Prevents context overflow crashes by automatically managing
 # session file lifecycle. When a session file exceeds the size

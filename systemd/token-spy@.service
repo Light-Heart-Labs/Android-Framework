@@ -1,5 +1,5 @@
 [Unit]
-Description=LightHeart OpenClaw - Token Spy (%i)
+Description=Android Framework - Token Spy (%i)
 After=network.target
 
 [Service]

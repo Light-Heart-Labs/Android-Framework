@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LightHeart OpenClaw — vLLM Tool Call Proxy (v4)
+Android Framework — vLLM Tool Call Proxy (v4)
 
 Bridges OpenClaw with local vLLM instances by handling three incompatibilities:
 
@@ -479,7 +479,7 @@ def health():
 @app.route('/')
 def root():
     return {
-        'service': 'LightHeart OpenClaw — vLLM Tool Call Proxy',
+        'service': 'Android Framework — vLLM Tool Call Proxy',
         'version': 'v4',
         'vllm_url': VLLM_URL,
         'features': [
@@ -499,7 +499,7 @@ def root():
 # ═══════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='LightHeart OpenClaw — vLLM Tool Call Proxy')
+    parser = argparse.ArgumentParser(description='Android Framework — vLLM Tool Call Proxy')
     parser.add_argument('--port', type=int, default=int(os.environ.get('PROXY_PORT', '8003')),
                         help='Port to listen on (default: 8003, env: PROXY_PORT)')
     parser.add_argument('--vllm-url', type=str, default=VLLM_URL,
@@ -508,6 +508,6 @@ if __name__ == '__main__':
                         help='Host to bind to (default: 0.0.0.0)')
     args = parser.parse_args()
     VLLM_URL = args.vllm_url
-    logger.info(f'Starting LightHeart OpenClaw vLLM Tool Call Proxy v4')
+    logger.info(f'Starting Android Framework vLLM Tool Call Proxy v4')
     logger.info(f'Listening on {args.host}:{args.port} -> {VLLM_URL}')
     app.run(host=args.host, port=args.port, threaded=True)

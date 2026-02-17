@@ -1,11 +1,8 @@
-# LightHeart OpenClaw
+# Android Framework
 
-**A methodology for building persistent AI agent teams that actually work.**
+**Operations toolkit for persistent LLM agents — process watchdog, session cleanup, memory reset, API cost monitoring, and tool call proxy.**
 
-Patterns, tools, and battle-tested operational knowledge for running AI agents
-that stay up for hours, days, and weeks — coordinating with each other, learning
-from failures, and shipping real software. Built from production experience
-running 3+ agents 24/7 on local hardware.
+Framework-agnostic patterns born from the Android Collective: 3 AI agents, 3,464 commits, 8 days. Built for OpenClaw, works with any agent stack.
 
 About 70% of this repository is framework-agnostic. The patterns for identity,
 memory, coordination, autonomy, and observability apply to any agent system —
@@ -131,8 +128,8 @@ For the rationale behind every design choice: **[docs/DESIGN-DECISIONS.md](docs/
 ### Option 1: Full Install (Session Cleanup + Proxy)
 
 ```bash
-git clone https://github.com/Light-Heart-Labs/LightHeart-OpenClaw.git
-cd LightHeart-OpenClaw
+git clone https://github.com/Light-Heart-Labs/Android-Framework.git
+cd Android-Framework
 
 # Edit config for your setup
 nano config.yaml
@@ -335,7 +332,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full deep dive.
 ## Project Structure
 
 ```
-LightHeart-OpenClaw/
+Android-Framework/
 ├── config.yaml                         # Configuration (edit this first)
 ├── install.sh                          # Linux installer
 ├── install.ps1                         # Windows installer
@@ -474,4 +471,4 @@ Apache 2.0 — see [LICENSE](LICENSE)
 
 ---
 
-Built from production experience by [Lightheart Labs](https://github.com/Light-Heart-Labs) and the [OpenClaw Collective](COLLECTIVE.md). The patterns were discovered by the agents. The docs were written by the agents. The lessons were learned the hard way.
+Built from production experience by [Lightheart Labs](https://github.com/Light-Heart-Labs) and the [Android Collective](COLLECTIVE.md). The patterns were discovered by the agents. The docs were written by the agents. The lessons were learned the hard way.

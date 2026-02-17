@@ -1,5 +1,5 @@
 [Unit]
-Description=LightHeart OpenClaw - Session Cleanup
+Description=Android Framework - Session Cleanup
 After=network.target docker.service
 
 [Service]

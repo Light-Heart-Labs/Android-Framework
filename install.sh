@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# LightHeart OpenClaw - Installer
-# https://github.com/Light-Heart-Labs/LightHeart-OpenClaw
+# Android Framework - Installer
+# https://github.com/Light-Heart-Labs/Android-Framework
 #
 # Usage:
 #   ./install.sh                      # Interactive install
@@ -61,7 +61,7 @@ done
 # ── Banner ─────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  LightHeart OpenClaw - Installer${NC}"
+echo -e "${CYAN}  Android Framework - Installer${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
@@ -161,7 +161,7 @@ echo ""
 
 # ── Uninstall ──────────────────────────────────────────────────
 if [ "$UNINSTALL" = true ]; then
-    info "Uninstalling LightHeart OpenClaw..."
+    info "Uninstalling Android Framework..."
 
     if systemctl is-active --quiet openclaw-session-cleanup.timer 2>/dev/null; then
         sudo systemctl stop openclaw-session-cleanup.timer

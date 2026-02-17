@@ -52,8 +52,8 @@ Each reset cycle:
 
 ```bash
 # Clone the repo
-git clone https://github.com/Light-Heart-Labs/LightHeart-OpenClaw.git
-cd LightHeart-OpenClaw/memory-shepherd
+git clone https://github.com/Light-Heart-Labs/Android-Framework.git
+cd Android-Framework/memory-shepherd
 
 # Create your config from the example
 cp memory-shepherd.conf.example memory-shepherd.conf
