@@ -22,3 +22,9 @@ config.yaml.bak
 # Temporary
 *.tmp
 *.swp
+
+# Token Spy runtime
+token-spy/.env
+token-spy/data/
+token-spy/*.db
+token-spy/*.sqlite

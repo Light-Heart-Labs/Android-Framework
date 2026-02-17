@@ -2,7 +2,7 @@
 
 **Your agents never crash from context overflow again.**
 
-An open source toolkit for [OpenClaw](https://openclaw.io) agents. Session lifecycle management, local model tool-calling fixes, golden configs, and everything else you need to run OpenClaw agents that don't fall over.
+An open source toolkit for [OpenClaw](https://openclaw.io) agents. Session lifecycle management, API cost monitoring, local model tool-calling fixes, golden configs, and everything else you need to run OpenClaw agents that don't fall over.
 
 ---
 
@@ -17,6 +17,11 @@ A lightweight daemon that monitors `.jsonl` session files and automatically clea
 A transparent proxy between OpenClaw and vLLM that makes local model tool calling actually work. Handles SSE re-wrapping, tool call extraction from text, response cleaning, and loop protection.
 
 Without it, you get "No reply from agent" with 0 tokens. With it, your local agents just work.
+
+### Token Spy — API Cost & Usage Monitor
+A transparent API proxy that captures per-turn token usage, cost, latency, and session health for cloud model calls (Anthropic, OpenAI, Moonshot). Point your agent's `baseUrl` at Token Spy instead of the upstream API — it logs everything, then forwards requests and responses untouched, including SSE streams.
+
+Includes a real-time dashboard with session health cards, cost charts, token breakdown, and cumulative spend tracking. Can auto-kill sessions that exceed a configurable character limit. Works with any OpenAI-compatible or Anthropic API client.
 
 ### Golden Configs
 Battle-tested `openclaw.json` and `models.json` templates with the critical `compat` block that prevents OpenClaw from sending parameters vLLM silently rejects. Getting these four flags wrong produces mysterious failures with no error messages — we figured them out so you don't have to.
@@ -54,10 +59,14 @@ chmod +x install.sh
 # Tool proxy only (for local vLLM setups)
 ./install.sh --proxy-only
 
+# Token Spy only (API cost monitoring for cloud models)
+./install.sh --token-spy-only
+
 # Windows
 .\install.ps1
 .\install.ps1 -CleanupOnly
 .\install.ps1 -ProxyOnly
+.\install.ps1 -TokenSpyOnly
 ```
 
 ### Option 3: Running vLLM from Scratch
@@ -100,6 +109,14 @@ tool_proxy:
   port: 8003
   vllm_url: "http://localhost:8000"
   max_tool_calls: 500         # Safety limit for loop protection
+
+token_spy:
+  enabled: false              # Set to true to enable
+  agent_name: "my-agent"
+  port: 9110
+  anthropic_upstream: "https://api.anthropic.com"
+  openai_upstream: ""         # e.g., "https://api.moonshot.ai"
+  session_char_limit: 200000  # ~50K tokens
 ```
 
 ### Session Size Guide
@@ -166,6 +183,18 @@ OpenClaw sends request (stream: true, tools: [...])
   → OpenClaw receives proper streaming response with tool_calls
 ```
 
+### Token Spy Flow
+
+```
+OpenClaw sends request to Token Spy (instead of direct to API)
+  → Token Spy logs: model, tokens, cache, cost, latency, session health
+  → Token Spy forwards to upstream (Anthropic/OpenAI) untouched
+  → Upstream responds (JSON or SSE stream)
+  → Token Spy forwards response back untouched
+  → Dashboard updates in real-time
+  → If session exceeds char limit → auto-kill session file
+```
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full deep dive.
 
 ---
@@ -186,6 +215,15 @@ LightHeart-OpenClaw/
 │   ├── vllm-tool-proxy.py             # vLLM tool call proxy (v4)
 │   ├── start-vllm.sh                  # Start vLLM via Docker
 │   └── start-proxy.sh                 # Start the tool call proxy
+├── token-spy/                          # API cost & usage monitor
+│   ├── main.py                        # Proxy server + embedded dashboard
+│   ├── db.py                          # SQLite storage layer
+│   ├── db_postgres.py                 # PostgreSQL/TimescaleDB layer
+│   ├── providers/                     # Pluggable cost calculation
+│   │   ├── anthropic.py
+│   │   └── openai.py
+│   ├── .env.example                   # Configuration reference
+│   └── requirements.txt               # Python dependencies
 ├── workspace/
 │   ├── SOUL.md                        # Agent personality template
 │   ├── IDENTITY.md                    # Agent identity template
@@ -194,10 +232,12 @@ LightHeart-OpenClaw/
 ├── systemd/
 │   ├── openclaw-session-cleanup.service
 │   ├── openclaw-session-cleanup.timer
-│   └── vllm-tool-proxy.service
+│   ├── vllm-tool-proxy.service
+│   └── token-spy@.service             # Token Spy (templated per-agent)
 ├── docs/
 │   ├── SETUP.md                       # Full local setup guide
-│   └── ARCHITECTURE.md                # How it all fits together
+│   ├── ARCHITECTURE.md                # How it all fits together
+│   └── TOKEN-SPY.md                   # Token Spy setup & API reference
 └── LICENSE
 ```
 
@@ -233,6 +273,19 @@ The proxy handles tool call extraction regardless of format — `<tools>` tags, 
 | `VLLM_TOOL_PARSER` | `qwen3_coder` | Tool call parser |
 | `VLLM_API_KEY` | — | API key for OpenClaw (can be anything) |
 
+### Token Spy Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_NAME` | `unknown` | Agent identifier shown in dashboard |
+| `PORT` | `9110` | Token Spy proxy port |
+| `ANTHROPIC_UPSTREAM` | `https://api.anthropic.com` | Upstream for `/v1/messages` |
+| `OPENAI_UPSTREAM` | *(empty)* | Upstream for `/v1/chat/completions` |
+| `DB_BACKEND` | `sqlite` | `sqlite` or `postgres` |
+| `SESSION_CHAR_LIMIT` | `200000` | Auto-reset threshold in characters |
+| `AGENT_SESSION_DIRS` | *(empty)* | JSON map of agent name to session dir |
+| `LOCAL_MODEL_AGENTS` | *(empty)* | Comma-separated agents with $0 cost |
+
 ---
 
 ## Troubleshooting
@@ -247,6 +300,8 @@ See [docs/SETUP.md](docs/SETUP.md) for the full troubleshooting guide. Quick hit
 | Agent stuck in loop | Proxy aborts at 500 calls. Lower `MAX_TOOL_CALLS` if needed |
 | vLLM CUDA crash | Add `--compilation_config.cudagraph_mode=PIECEWISE` |
 | vLLM assertion error | Don't use `--kv-cache-dtype fp8` with Qwen3-Next |
+| Token Spy dashboard empty | Ensure your agent's `baseUrl` points to Token Spy, not the upstream API |
+| Token Spy 502 errors | Check `ANTHROPIC_UPSTREAM` or `OPENAI_UPSTREAM` is set correctly in `.env` |
 
 ---
 

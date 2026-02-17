@@ -4,11 +4,12 @@
 # https://github.com/Light-Heart-Labs/LightHeart-OpenClaw
 #
 # Usage:
-#   ./install.sh                    # Interactive install
-#   ./install.sh --config my.yaml   # Use custom config
-#   ./install.sh --cleanup-only     # Only install session cleanup
-#   ./install.sh --proxy-only       # Only install tool proxy
-#   ./install.sh --uninstall        # Remove everything
+#   ./install.sh                      # Interactive install
+#   ./install.sh --config my.yaml     # Use custom config
+#   ./install.sh --cleanup-only       # Only install session cleanup
+#   ./install.sh --proxy-only         # Only install tool proxy
+#   ./install.sh --token-spy-only     # Only install Token Spy API monitor
+#   ./install.sh --uninstall          # Remove everything
 # ═══════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -17,6 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.yaml"
 CLEANUP_ONLY=false
 PROXY_ONLY=false
+TOKEN_SPY_ONLY=false
 UNINSTALL=false
 
 # ── Colors ─────────────────────────────────────────────────────
@@ -36,18 +38,20 @@ err()   { echo -e "${RED}[FAIL]${NC} $1"; }
 while [[ $# -gt 0 ]]; do
     case $1 in
         --config)       CONFIG_FILE="$2"; shift 2 ;;
-        --cleanup-only) CLEANUP_ONLY=true; shift ;;
-        --proxy-only)   PROXY_ONLY=true; shift ;;
-        --uninstall)    UNINSTALL=true; shift ;;
+        --cleanup-only)   CLEANUP_ONLY=true; shift ;;
+        --proxy-only)     PROXY_ONLY=true; shift ;;
+        --token-spy-only) TOKEN_SPY_ONLY=true; shift ;;
+        --uninstall)      UNINSTALL=true; shift ;;
         -h|--help)
             echo "Usage: ./install.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --config FILE     Use custom config file (default: config.yaml)"
-            echo "  --cleanup-only    Only install session cleanup"
-            echo "  --proxy-only      Only install vLLM tool proxy"
-            echo "  --uninstall       Remove all installed components"
-            echo "  -h, --help        Show this help"
+            echo "  --config FILE       Use custom config file (default: config.yaml)"
+            echo "  --cleanup-only      Only install session cleanup"
+            echo "  --proxy-only        Only install vLLM tool proxy"
+            echo "  --token-spy-only    Only install Token Spy API monitor"
+            echo "  --uninstall         Remove all installed components"
+            echo "  -h, --help          Show this help"
             exit 0
             ;;
         *) err "Unknown option: $1"; exit 1 ;;
@@ -100,6 +104,19 @@ VLLM_URL=$(parse_yaml "vllm_url" "http://localhost:8000")
 LOG_FILE=$(parse_yaml "log_file" "~/vllm-proxy.log")
 LOG_FILE="${LOG_FILE/#\~/$HOME}"
 
+# Token Spy settings
+TS_ENABLED=$(parse_yaml "enabled" "false")
+TS_AGENT_NAME=$(parse_yaml "agent_name" "my-agent")
+TS_PORT=$(parse_yaml "port" "9110")
+TS_HOST=$(parse_yaml "host" "0.0.0.0")
+TS_ANTHROPIC_UPSTREAM=$(parse_yaml "anthropic_upstream" "https://api.anthropic.com")
+TS_OPENAI_UPSTREAM=$(parse_yaml "openai_upstream" "")
+TS_API_PROVIDER=$(parse_yaml "api_provider" "anthropic")
+TS_DB_BACKEND=$(parse_yaml "db_backend" "sqlite")
+TS_SESSION_CHAR_LIMIT=$(parse_yaml "session_char_limit" "200000")
+TS_AGENT_SESSION_DIRS=$(parse_yaml "agent_session_dirs" "")
+TS_LOCAL_MODEL_AGENTS=$(parse_yaml "local_model_agents" "")
+
 # System user
 SYSTEM_USER=$(parse_yaml "system_user" "")
 if [ -z "$SYSTEM_USER" ]; then
@@ -112,11 +129,14 @@ info "  OpenClaw dir:     $OPENCLAW_DIR"
 info "  System user:      $SYSTEM_USER"
 info "  Max session size: $MAX_SESSION_SIZE bytes"
 info "  Cleanup interval: ${INTERVAL_MINUTES}min"
-if [ "$PROXY_ONLY" = false ]; then
+if [ "$PROXY_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ]; then
     info "  Session cleanup:  $([ "$CLEANUP_ENABLED" = "true" ] && echo "enabled" || echo "disabled")"
 fi
-if [ "$CLEANUP_ONLY" = false ]; then
+if [ "$CLEANUP_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ]; then
     info "  Tool proxy:       $([ "$PROXY_ENABLED" = "true" ] && echo "enabled on :$PROXY_PORT -> $VLLM_URL" || echo "disabled")"
+fi
+if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ]; then
+    info "  Token Spy:        $([ "$TS_ENABLED" = "true" ] && echo "enabled on :$TS_PORT ($TS_AGENT_NAME)" || echo "disabled")"
 fi
 echo ""
 
@@ -138,6 +158,14 @@ if [ "$UNINSTALL" = true ]; then
         ok "Stopped tool proxy service"
     fi
     sudo rm -f /etc/systemd/system/vllm-tool-proxy.service
+
+    # Token Spy (check for any token-spy@ instances)
+    for svc in $(systemctl list-units --type=service --all 2>/dev/null | grep -oP 'token-spy@[^.]+\.service' || true); do
+        sudo systemctl stop "$svc" 2>/dev/null || true
+        sudo systemctl disable "$svc" 2>/dev/null || true
+        ok "Stopped $svc"
+    done
+    sudo rm -f /etc/systemd/system/token-spy@.service
 
     sudo systemctl daemon-reload
     rm -f "$OPENCLAW_DIR/session-cleanup.sh"
@@ -180,7 +208,7 @@ if [ "$HAS_SYSTEMD" = true ] && ! sudo -n true 2>/dev/null; then
 fi
 
 # Check Python deps for proxy
-if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
+if [ "$CLEANUP_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
     MISSING_DEPS=()
     python3 -c "import flask" 2>/dev/null || MISSING_DEPS+=("flask")
     python3 -c "import requests" 2>/dev/null || MISSING_DEPS+=("requests")
@@ -199,10 +227,31 @@ if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
     fi
 fi
 
+# Check Python deps for Token Spy
+if ([ "$TOKEN_SPY_ONLY" = true ] || ([ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ])) && [ "$TS_ENABLED" = "true" ]; then
+    TS_MISSING_DEPS=()
+    python3 -c "import fastapi" 2>/dev/null || TS_MISSING_DEPS+=("fastapi")
+    python3 -c "import httpx" 2>/dev/null || TS_MISSING_DEPS+=("httpx")
+    python3 -c "import uvicorn" 2>/dev/null || TS_MISSING_DEPS+=("uvicorn")
+
+    if [ ${#TS_MISSING_DEPS[@]} -gt 0 ]; then
+        warn "Missing Token Spy packages: ${TS_MISSING_DEPS[*]}"
+        info "Installing from token-spy/requirements.txt"
+        pip3 install -r "$SCRIPT_DIR/token-spy/requirements.txt" --quiet 2>/dev/null || {
+            err "Failed to install Token Spy dependencies"
+            err "Run manually: pip3 install -r token-spy/requirements.txt"
+            exit 1
+        }
+        ok "Token Spy dependencies installed"
+    else
+        ok "Token Spy dependencies satisfied (fastapi, httpx, uvicorn)"
+    fi
+fi
+
 echo ""
 
 # ── Install Session Cleanup ───────────────────────────────────
-if [ "$PROXY_ONLY" = false ] && [ "$CLEANUP_ENABLED" = "true" ]; then
+if [ "$PROXY_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ] && [ "$CLEANUP_ENABLED" = "true" ]; then
     info "Installing session cleanup..."
 
     SESSIONS_DIR="$OPENCLAW_DIR/$SESSIONS_PATH"
@@ -239,7 +288,7 @@ if [ "$PROXY_ONLY" = false ] && [ "$CLEANUP_ENABLED" = "true" ]; then
 fi
 
 # ── Install Tool Proxy ────────────────────────────────────────
-if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
+if [ "$CLEANUP_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
     info "Installing vLLM tool proxy..."
 
     # Determine install location
@@ -278,6 +327,65 @@ if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
     fi
 fi
 
+# ── Install Token Spy ─────────────────────────────────────────
+if ([ "$TOKEN_SPY_ONLY" = true ] || ([ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ])) && [ "$TS_ENABLED" = "true" ]; then
+    info "Installing Token Spy API monitor..."
+
+    TS_INSTALL_DIR="$OPENCLAW_DIR/token-spy"
+    mkdir -p "$TS_INSTALL_DIR/providers"
+
+    # Copy Token Spy source
+    cp "$SCRIPT_DIR/token-spy/main.py" "$TS_INSTALL_DIR/"
+    cp "$SCRIPT_DIR/token-spy/db.py" "$TS_INSTALL_DIR/"
+    cp "$SCRIPT_DIR/token-spy/db_postgres.py" "$TS_INSTALL_DIR/"
+    cp "$SCRIPT_DIR/token-spy/requirements.txt" "$TS_INSTALL_DIR/"
+    cp "$SCRIPT_DIR/token-spy/providers/"*.py "$TS_INSTALL_DIR/providers/"
+
+    # Generate .env from config values
+    cat > "$TS_INSTALL_DIR/.env" << TSENV
+# Token Spy — generated by install.sh
+AGENT_NAME=$TS_AGENT_NAME
+PORT=$TS_PORT
+ANTHROPIC_UPSTREAM=$TS_ANTHROPIC_UPSTREAM
+OPENAI_UPSTREAM=$TS_OPENAI_UPSTREAM
+API_PROVIDER=$TS_API_PROVIDER
+DB_BACKEND=$TS_DB_BACKEND
+SESSION_CHAR_LIMIT=$TS_SESSION_CHAR_LIMIT
+AGENT_SESSION_DIRS=$TS_AGENT_SESSION_DIRS
+LOCAL_MODEL_AGENTS=$TS_LOCAL_MODEL_AGENTS
+TSENV
+
+    ok "Token Spy installed: $TS_INSTALL_DIR"
+
+    # Install systemd service
+    if [ "$HAS_SYSTEMD" = true ]; then
+        # Stop existing if running
+        if systemctl is-active --quiet "token-spy@${TS_AGENT_NAME}" 2>/dev/null; then
+            sudo systemctl stop "token-spy@${TS_AGENT_NAME}"
+        fi
+
+        sudo cp "$SCRIPT_DIR/systemd/token-spy@.service" /etc/systemd/system/
+        sudo sed -i "s|__USER__|$SYSTEM_USER|g" /etc/systemd/system/token-spy@.service
+        sudo sed -i "s|__INSTALL_DIR__|$TS_INSTALL_DIR|g" /etc/systemd/system/token-spy@.service
+        sudo sed -i "s|__HOST__|$TS_HOST|g" /etc/systemd/system/token-spy@.service
+        sudo sed -i "s|__PORT__|$TS_PORT|g" /etc/systemd/system/token-spy@.service
+
+        sudo systemctl daemon-reload
+        sudo systemctl enable "token-spy@${TS_AGENT_NAME}"
+        sudo systemctl start "token-spy@${TS_AGENT_NAME}"
+
+        sleep 2
+        if systemctl is-active --quiet "token-spy@${TS_AGENT_NAME}"; then
+            ok "Token Spy running on :$TS_PORT (agent: $TS_AGENT_NAME)"
+        else
+            err "Token Spy failed to start. Check: journalctl -u token-spy@${TS_AGENT_NAME}"
+        fi
+    else
+        info "No systemd. Start manually:"
+        info "  cd $TS_INSTALL_DIR && AGENT_NAME=$TS_AGENT_NAME python3 -m uvicorn main:app --host $TS_HOST --port $TS_PORT"
+    fi
+fi
+
 # ── OpenClaw Config Reminder ──────────────────────────────────
 echo ""
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
@@ -285,7 +393,7 @@ echo -e "${GREEN}  Installation complete!${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
-if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
+if [ "$CLEANUP_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
     info "IMPORTANT: Update your openclaw.json model providers to use the proxy:"
     echo ""
     echo "  Change your provider baseUrl from:"
@@ -296,16 +404,34 @@ if [ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ENABLED" = "true" ]; then
     echo ""
 fi
 
+if [ "$TS_ENABLED" = "true" ] && ([ "$TOKEN_SPY_ONLY" = true ] || ([ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ])); then
+    info "IMPORTANT: Update your openclaw.json cloud providers to route through Token Spy:"
+    echo ""
+    echo "  Change your Anthropic baseUrl to:"
+    echo "    \"baseUrl\": \"http://localhost:${TS_PORT}\""
+    echo ""
+    echo "  Change your OpenAI-compatible baseUrl to:"
+    echo "    \"baseUrl\": \"http://localhost:${TS_PORT}/v1\""
+    echo ""
+    echo "  Dashboard: http://localhost:${TS_PORT}/dashboard"
+    echo ""
+fi
+
 info "Useful commands:"
 if [ "$HAS_SYSTEMD" = true ]; then
-    if [ "$PROXY_ONLY" = false ]; then
+    if [ "$PROXY_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ]; then
         echo "  systemctl status openclaw-session-cleanup.timer   # Check timer"
         echo "  journalctl -u openclaw-session-cleanup -f         # Watch cleanup logs"
     fi
-    if [ "$CLEANUP_ONLY" = false ]; then
+    if [ "$CLEANUP_ONLY" = false ] && [ "$TOKEN_SPY_ONLY" = false ]; then
         echo "  systemctl status vllm-tool-proxy                  # Check proxy"
         echo "  journalctl -u vllm-tool-proxy -f                  # Watch proxy logs"
         echo "  curl http://localhost:${PROXY_PORT}/health                    # Test proxy health"
+    fi
+    if [ "$TS_ENABLED" = "true" ] && ([ "$TOKEN_SPY_ONLY" = true ] || ([ "$CLEANUP_ONLY" = false ] && [ "$PROXY_ONLY" = false ])); then
+        echo "  systemctl status token-spy@${TS_AGENT_NAME}                 # Check Token Spy"
+        echo "  journalctl -u token-spy@${TS_AGENT_NAME} -f                 # Watch Token Spy logs"
+        echo "  curl http://localhost:${TS_PORT}/health                     # Test Token Spy health"
     fi
 fi
 echo ""

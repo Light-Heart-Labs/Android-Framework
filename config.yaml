@@ -60,6 +60,46 @@ tool_proxy:
   max_tool_calls: 500
 
 # ─────────────────────────────────────────────
+# Token Spy — API Cost & Usage Monitor
+# ─────────────────────────────────────────────
+token_spy:
+  # Enable Token Spy API monitoring proxy
+  # Sits between your agents and upstream LLM APIs, logging every request
+  enabled: false
+
+  # Agent name shown in the dashboard
+  agent_name: "my-agent"
+
+  # Port for the Token Spy proxy
+  port: 9110
+
+  # Bind address (0.0.0.0 = all interfaces, 127.0.0.1 = localhost only)
+  host: "0.0.0.0"
+
+  # Upstream API URLs — Token Spy routes by endpoint:
+  #   /v1/messages         -> anthropic_upstream
+  #   /v1/chat/completions -> openai_upstream
+  anthropic_upstream: "https://api.anthropic.com"
+  openai_upstream: ""
+
+  # Provider type for cost calculation: anthropic, openai, moonshot, local
+  api_provider: "anthropic"
+
+  # Database backend: sqlite (zero-config) or postgres
+  db_backend: "sqlite"
+
+  # Session character limit for auto-reset (~4 chars per token)
+  # Token Spy reads actual request payload sizes — smarter than file-size checks
+  session_char_limit: 200000
+
+  # Path to OpenClaw session dirs (JSON map, for session auto-reset)
+  # Example: '{"my-agent":"~/.openclaw/agents/main/sessions"}'
+  agent_session_dirs: ""
+
+  # Agents using local/self-hosted models (comma-separated, get $0 cost badge)
+  local_model_agents: ""
+
+# ─────────────────────────────────────────────
 # System User
 # ─────────────────────────────────────────────
 # The Linux user that runs OpenClaw (used for systemd services)

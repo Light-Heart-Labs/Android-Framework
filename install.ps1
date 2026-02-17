@@ -7,6 +7,7 @@
 #   .\install.ps1 -Config my.yaml     # Use custom config
 #   .\install.ps1 -CleanupOnly        # Only install session cleanup
 #   .\install.ps1 -ProxyOnly          # Only install tool proxy
+#   .\install.ps1 -TokenSpyOnly       # Only install Token Spy API monitor
 #   .\install.ps1 -Uninstall          # Remove everything
 # ═══════════════════════════════════════════════════════════════
 
@@ -14,6 +15,7 @@ param(
     [string]$Config = "",
     [switch]$CleanupOnly,
     [switch]$ProxyOnly,
+    [switch]$TokenSpyOnly,
     [switch]$Uninstall,
     [switch]$Help
 )
@@ -43,6 +45,7 @@ if ($Help) {
     Write-Host "  -Config FILE      Use custom config file (default: config.yaml)"
     Write-Host "  -CleanupOnly      Only install session cleanup"
     Write-Host "  -ProxyOnly        Only install vLLM tool proxy"
+    Write-Host "  -TokenSpyOnly     Only install Token Spy API monitor"
     Write-Host "  -Uninstall        Remove all installed components"
     Write-Host "  -Help             Show this help"
     exit 0
@@ -80,16 +83,31 @@ $VllmUrl = Parse-Yaml "vllm_url" "http://localhost:8000"
 
 $SessionsDir = Join-Path $OpenClawDir $SessionsPath
 
+# Token Spy settings
+$TsEnabled = Parse-Yaml "enabled" "false"
+$TsAgentName = Parse-Yaml "agent_name" "my-agent"
+$TsPort = Parse-Yaml "port" "9110"
+$TsHost = Parse-Yaml "host" "0.0.0.0"
+$TsAnthropicUpstream = Parse-Yaml "anthropic_upstream" "https://api.anthropic.com"
+$TsOpenaiUpstream = Parse-Yaml "openai_upstream" ""
+$TsApiProvider = Parse-Yaml "api_provider" "anthropic"
+$TsDbBackend = Parse-Yaml "db_backend" "sqlite"
+$TsSessionCharLimit = Parse-Yaml "session_char_limit" "200000"
+
 Write-Host ""
 Info "Configuration:"
 Info "  OpenClaw dir:     $OpenClawDir"
 Info "  Max session size: $MaxSessionSize bytes"
 Info "  Cleanup interval: ${IntervalMinutes}min"
+if ($TsEnabled -eq "true") {
+    Info "  Token Spy:        enabled on :$TsPort ($TsAgentName)"
+}
 Write-Host ""
 
 # ── Task Name ──────────────────────────────────────────────────
 $CleanupTaskName = "OpenClawSessionCleanup"
 $ProxyTaskName = "OpenClawToolProxy"
+$TokenSpyTaskName = "OpenClawTokenSpy"
 
 # ── Uninstall ──────────────────────────────────────────────────
 if ($Uninstall) {
@@ -105,14 +123,22 @@ if ($Uninstall) {
         Ok "Removed proxy scheduled task"
     }
 
-    # Stop proxy if running
+    if (Get-ScheduledTask -TaskName $TokenSpyTaskName -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $TokenSpyTaskName -Confirm:$false
+        Ok "Removed Token Spy scheduled task"
+    }
+
+    # Stop proxy and Token Spy if running
     Get-Process python* | Where-Object { $_.CommandLine -like "*vllm-tool-proxy*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process python* | Where-Object { $_.CommandLine -like "*uvicorn*main:app*" } | Stop-Process -Force -ErrorAction SilentlyContinue
 
     # Remove scripts
     $CleanupScript = Join-Path $OpenClawDir "session-cleanup.ps1"
     $ProxyScript = Join-Path $OpenClawDir "vllm-tool-proxy.py"
+    $TsDir = Join-Path $OpenClawDir "token-spy"
     if (Test-Path $CleanupScript) { Remove-Item $CleanupScript; Ok "Removed $CleanupScript" }
     if (Test-Path $ProxyScript) { Remove-Item $ProxyScript; Ok "Removed $ProxyScript" }
+    if (Test-Path $TsDir) { Remove-Item $TsDir -Recurse -Force; Ok "Removed $TsDir" }
 
     Ok "Uninstall complete"
     exit 0
@@ -142,7 +168,7 @@ try {
 }
 
 # ── Install Session Cleanup (Windows Task Scheduler) ──────────
-if (-not $ProxyOnly) {
+if (-not $ProxyOnly -and -not $TokenSpyOnly) {
     Info "Installing session cleanup..."
 
     # Create PowerShell version of cleanup script
@@ -242,7 +268,7 @@ Write-Output "[`$(Get-Date)] Cleanup complete: removed `$removedInactive inactiv
 }
 
 # ── Install Tool Proxy ────────────────────────────────────────
-if (-not $CleanupOnly) {
+if (-not $CleanupOnly -and -not $TokenSpyOnly) {
     Info "Installing vLLM tool proxy..."
 
     $ProxyScript = Join-Path $OpenClawDir "vllm-tool-proxy.py"
@@ -282,6 +308,69 @@ if (-not $CleanupOnly) {
     }
 }
 
+# ── Install Token Spy ─────────────────────────────────────────
+if (($TokenSpyOnly -or (-not $CleanupOnly -and -not $ProxyOnly)) -and $TsEnabled -eq "true") {
+    Info "Installing Token Spy API monitor..."
+
+    $TsInstallDir = Join-Path $OpenClawDir "token-spy"
+    $TsProvidersDir = Join-Path $TsInstallDir "providers"
+    New-Item -ItemType Directory -Path $TsProvidersDir -Force | Out-Null
+
+    # Copy source files
+    Copy-Item (Join-Path $ScriptDir "token-spy\main.py") $TsInstallDir -Force
+    Copy-Item (Join-Path $ScriptDir "token-spy\db.py") $TsInstallDir -Force
+    Copy-Item (Join-Path $ScriptDir "token-spy\db_postgres.py") $TsInstallDir -Force
+    Copy-Item (Join-Path $ScriptDir "token-spy\requirements.txt") $TsInstallDir -Force
+    Copy-Item (Join-Path $ScriptDir "token-spy\providers\*.py") $TsProvidersDir -Force
+
+    # Generate .env
+    $envContent = @"
+# Token Spy - generated by install.ps1
+AGENT_NAME=$TsAgentName
+PORT=$TsPort
+ANTHROPIC_UPSTREAM=$TsAnthropicUpstream
+OPENAI_UPSTREAM=$TsOpenaiUpstream
+API_PROVIDER=$TsApiProvider
+DB_BACKEND=$TsDbBackend
+SESSION_CHAR_LIMIT=$TsSessionCharLimit
+"@
+    Set-Content -Path (Join-Path $TsInstallDir ".env") -Value $envContent -Encoding UTF8
+    Ok "Token Spy installed: $TsInstallDir"
+
+    # Install Python deps
+    $tsMissing = @()
+    try { python -c "import fastapi" 2>$null } catch { $tsMissing += "fastapi" }
+    try { python -c "import httpx" 2>$null } catch { $tsMissing += "httpx" }
+    try { python -c "import uvicorn" 2>$null } catch { $tsMissing += "uvicorn" }
+    if ($tsMissing.Count -gt 0) {
+        Info "Installing Token Spy packages..."
+        pip install -r (Join-Path $TsInstallDir "requirements.txt") --quiet 2>$null
+    }
+
+    # Create scheduled task to run Token Spy at logon
+    if (Get-ScheduledTask -TaskName $TokenSpyTaskName -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $TokenSpyTaskName -Confirm:$false
+    }
+
+    $tsAction = New-ScheduledTaskAction -Execute "python" -Argument "-m uvicorn main:app --host $TsHost --port $TsPort" -WorkingDirectory $TsInstallDir
+    $tsTrigger = New-ScheduledTaskTrigger -AtLogOn
+    $tsSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Days 365)
+
+    Register-ScheduledTask -TaskName $TokenSpyTaskName -Action $tsAction -Trigger $tsTrigger -Settings $tsSettings -Description "LightHeart OpenClaw - Token Spy on :$TsPort" | Out-Null
+    Ok "Scheduled task created: $TokenSpyTaskName (starts at logon)"
+
+    # Start it now
+    Start-ScheduledTask -TaskName $TokenSpyTaskName
+    Start-Sleep -Seconds 3
+
+    try {
+        $tsHealth = Invoke-RestMethod "http://localhost:$TsPort/health" -TimeoutSec 5
+        Ok "Token Spy is running: $($tsHealth.status)"
+    } catch {
+        Warn "Token Spy may still be starting. Test with: curl http://localhost:${TsPort}/health"
+    }
+}
+
 # ── Done ───────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "===========================================================" -ForegroundColor Cyan
@@ -289,7 +378,7 @@ Write-Host "  Installation complete!" -ForegroundColor Green
 Write-Host "===========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-if (-not $CleanupOnly) {
+if (-not $CleanupOnly -and -not $TokenSpyOnly) {
     Info "IMPORTANT: Update your openclaw.json model providers to use the proxy:"
     Write-Host ""
     Write-Host "  Change your provider baseUrl from:"
@@ -300,13 +389,28 @@ if (-not $CleanupOnly) {
     Write-Host ""
 }
 
+if ($TsEnabled -eq "true" -and ($TokenSpyOnly -or (-not $CleanupOnly -and -not $ProxyOnly))) {
+    Info "IMPORTANT: Update your openclaw.json cloud providers to route through Token Spy:"
+    Write-Host ""
+    Write-Host "  Anthropic:  `"baseUrl`": `"http://localhost:${TsPort}`""
+    Write-Host "  OpenAI:     `"baseUrl`": `"http://localhost:${TsPort}/v1`""
+    Write-Host ""
+    Write-Host "  Dashboard:  http://localhost:${TsPort}/dashboard"
+    Write-Host ""
+}
+
 Info "Useful commands:"
-if (-not $ProxyOnly) {
+if (-not $ProxyOnly -and -not $TokenSpyOnly) {
     Write-Host "  Get-ScheduledTask -TaskName '$CleanupTaskName'    # Check cleanup task"
     Write-Host "  Start-ScheduledTask -TaskName '$CleanupTaskName'  # Run cleanup now"
 }
-if (-not $CleanupOnly) {
+if (-not $CleanupOnly -and -not $TokenSpyOnly) {
     Write-Host "  Get-ScheduledTask -TaskName '$ProxyTaskName'      # Check proxy task"
     Write-Host "  curl http://localhost:${ProxyPort}/health                    # Test proxy"
+}
+if ($TsEnabled -eq "true" -and ($TokenSpyOnly -or (-not $CleanupOnly -and -not $ProxyOnly))) {
+    Write-Host "  Get-ScheduledTask -TaskName '$TokenSpyTaskName'   # Check Token Spy task"
+    Write-Host "  curl http://localhost:${TsPort}/health                     # Test Token Spy"
+    Write-Host "  Start http://localhost:${TsPort}/dashboard                 # Open dashboard"
 }
 Write-Host ""
