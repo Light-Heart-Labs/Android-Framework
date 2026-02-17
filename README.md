@@ -54,6 +54,9 @@ Supports tiered health checks (port listening, HTTP endpoints, custom commands, 
 ### Architecture Docs
 Deep-dive documentation on how OpenClaw talks to vLLM, why the proxy exists, how session files work, and the five failure points that kill local setups.
 
+### Operational Guides
+Lessons learned from running agents 24/7, multi-agent coordination patterns, and infrastructure protection strategies — all discovered by persistent agents running on local hardware. See the [docs/](docs/) directory.
+
 ---
 
 ## The Bigger Picture
@@ -349,7 +352,10 @@ LightHeart-OpenClaw/
 ├── docs/
 │   ├── SETUP.md                       # Full local setup guide
 │   ├── ARCHITECTURE.md                # How it all fits together
-│   └── TOKEN-SPY.md                   # Token Spy setup & API reference
+│   ├── TOKEN-SPY.md                   # Token Spy setup & API reference
+│   ├── OPERATIONAL-LESSONS.md         # Hard-won lessons from 24/7 agent ops
+│   ├── MULTI-AGENT-PATTERNS.md        # Coordination, swarms, and reliability
+│   └── GUARDIAN.md                    # Infrastructure protection & autonomy tiers
 └── LICENSE
 ```
 
