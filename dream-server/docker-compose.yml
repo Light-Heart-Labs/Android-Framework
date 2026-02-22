@@ -414,7 +414,7 @@ services:
     environment:
       - OPENCLAW_CONFIG=/config/openclaw.json
       - OPENCLAW_DATA=/data
-      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_TOKEN:-dreamserver2026}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_TOKEN:?Set OPENCLAW_TOKEN in .env}
     # Inject gateway token into Control UI so it auto-connects, then start gateway
     entrypoint: ["/bin/sh", "-c", "node /config/inject-token.js; exec docker-entrypoint.sh node openclaw.mjs gateway --allow-unconfigured"]
     volumes:

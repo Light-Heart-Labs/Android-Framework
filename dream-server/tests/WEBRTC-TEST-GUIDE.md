@@ -11,8 +11,8 @@ Synthetic HTTP stress tests passed (100 concurrent, 100% success). This test val
 
 ## Prerequisites
 
-- [ ] Dream Server running on .122 (or target machine)
-- [ ] Dashboard accessible at `http://192.168.0.122:3001`
+- [ ] Dream Server running on your target machine
+- [ ] Dashboard accessible at `http://<your-server-ip>:3001`
 - [ ] Voice services healthy (check `/api/voice/status`)
 - [ ] Browser with microphone access (Chrome/Firefox recommended)
 - [ ] Quiet environment for testing
@@ -21,7 +21,7 @@ Synthetic HTTP stress tests passed (100 concurrent, 100% success). This test val
 
 ```bash
 # From any machine on the network
-curl http://192.168.0.122:3002/api/voice/status
+curl http://<your-server-ip>:3002/api/voice/status
 ```
 
 Expected response:
@@ -41,7 +41,7 @@ Expected response:
 
 ### 1. Open Dashboard Voice Page
 
-1. Navigate to `http://192.168.0.122:3001/voice`
+1. Navigate to `http://<your-server-ip>:3001/voice`
 2. Grant microphone permission when prompted
 3. Verify connection status shows "Connected"
 

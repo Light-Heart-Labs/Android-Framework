@@ -846,7 +846,7 @@ except json.JSONDecodeError:
 #   AGENT_SESSION_DIRS='{"my-agent":"/path/to/sessions"}'
 
 # Remote agents: run on different hosts, accessed via SSH.
-# All agents are now local on .122 — no remote agents.
+# No remote agents configured by default.
 REMOTE_AGENTS = {}
 
 # Agents running local/self-hosted models ($0 cost, no cloud API).

@@ -324,7 +324,7 @@ If `nvidia-smi` shows no process, the model is running on CPU (very slow). Fix G
 The Privacy Shield has rate limiting to prevent abuse. Default: 100 requests/minute.
 
 To increase:
-1. Edit `privacy-shield-mvp-bundle/.env`
+1. Edit `.env`
 2. Change `RATE_LIMIT_REQUESTS_PER_MINUTE=100`
 3. Restart: `docker compose restart privacy-shield`
 
@@ -469,7 +469,7 @@ Then restart: `docker compose up -d`
 ### Documentation
 - Main README: `dream-server/README.md`
 - Architecture: `docs/ARCHITECTURE.md`
-- API Reference: `docs/API.md`
+- Security: `SECURITY.md`
 
 ### Community
 - GitHub Issues: https://github.com/Light-Heart-Labs/Lighthouse-AI/issues

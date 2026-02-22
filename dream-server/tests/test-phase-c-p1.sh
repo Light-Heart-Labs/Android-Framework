@@ -12,6 +12,8 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Config
 API_URL="http://localhost:3002"
 DASHBOARD_API_URL="http://localhost:3001"
@@ -156,7 +158,7 @@ fi
 # C6. status.sh port validation
 echo -e "${CYAN}-- C6. status.sh Port Verification --------------------------"
 
-STATUS_SCRIPT="/home/michael/Lighthouse-AI-Dev/dream-server/status.sh"
+STATUS_SCRIPT="${SCRIPT_DIR}/../status.sh"
 if [ -f "$STATUS_SCRIPT" ]; then
     # Check for incorrect port references
     if grep -q "Portainer.*9000\|Whisper 9000\|Kokoro 8002" "$STATUS_SCRIPT" 2>/dev/null; then
@@ -172,7 +174,7 @@ fi
 # C7. dream-cli TTS service alias
 echo -e "${CYAN}-- C7. dream-cli TTS Service Alias --------------------------"
 
-DREAM_CLI="/home/michael/Lighthouse-AI-Dev/dream-server/dream-cli"
+DREAM_CLI="${SCRIPT_DIR}/../dream-cli"
 if [ -f "$DREAM_CLI" ]; then
     if grep -q "piper.*dream-piper\|tts.*dream-piper" "$DREAM_CLI" 2>/dev/null; then
         log_fail "dream-cli maps TTS to wrong container (dream-piper instead of dream-tts)"
@@ -187,7 +189,7 @@ fi
 # C8. installer summary port display
 echo -e "${CYAN}-- C8. Installer Summary Port Display -----------------------"
 
-INSTALL_SCRIPT="/home/michael/Lighthouse-AI-Dev/dream-server/install.sh"
+INSTALL_SCRIPT="${SCRIPT_DIR}/../install.sh"
 if [ -f "$INSTALL_SCRIPT" ]; then
     if grep -q "Whisper 9000\|Kokoro 8002" "$INSTALL_SCRIPT" 2>/dev/null; then
         log_fail "install.sh shows wrong ports in summary (Whisper 9000, Kokoro 8002)"
@@ -202,7 +204,7 @@ fi
 # C9. dream-update.sh GitHub repo
 echo -e "${CYAN}-- C9. dream-update.sh GitHub Repo --------------------------"
 
-UPDATE_SCRIPT="/home/michael/Lighthouse-AI-Dev/dream-server/dream-update.sh"
+UPDATE_SCRIPT="${SCRIPT_DIR}/../dream-update.sh"
 if [ -f "$UPDATE_SCRIPT" ]; then
     if grep -q "GITHUB_REPO.*Light-Heart-Labs/Lighthouse-AI" "$UPDATE_SCRIPT" 2>/dev/null; then
         log_fail "dream-update.sh hardcodes wrong GitHub repo (Android-Labs instead of Dream Server)"
@@ -217,7 +219,7 @@ fi
 # C10. Migration script idempotency
 echo -e "${CYAN}-- C10. Migration Script Idempotency ------------------------"
 
-MIGRATION_SCRIPT="/home/michael/Lighthouse-AI-Dev/dream-server/migrations/migrate-v0.2.0.sh"
+MIGRATION_SCRIPT="${SCRIPT_DIR}/../migrations/migrate-v0.2.0.sh"
 if [ -f "$MIGRATION_SCRIPT" ]; then
     if ! grep -q "INSTALL_DIR=" "$MIGRATION_SCRIPT" 2>/dev/null; then
         log_fail "Migration script lacks INSTALL_DIR definition"
@@ -234,7 +236,7 @@ fi
 # C11. Container UID/GID configuration
 echo -e "${CYAN}-- C11. Container UID/GID Configuration ---------------------"
 
-COMPOSE_FILE="/home/michael/Lighthouse-AI-Dev/dream-server/docker-compose.yml"
+COMPOSE_FILE="${SCRIPT_DIR}/../docker-compose.yml"
 if [ -f "$COMPOSE_FILE" ]; then
     if grep -qE 'user:\s*["\']?1000:1000["\']?' "$COMPOSE_FILE" 2>/dev/null; then
         log_fail "docker-compose.yml hardcodes UID/GID 1000:1000"

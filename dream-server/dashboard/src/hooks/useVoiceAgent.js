@@ -69,12 +69,12 @@ export function useVoiceAgent() {
 
       // Set up event handlers
       room.on(RoomEvent.Connected, () => {
-        console.log('Connected to LiveKit room')
+        // Connected to LiveKit room
         setStatus('connected')
       })
 
       room.on(RoomEvent.Disconnected, () => {
-        console.log('Disconnected from LiveKit room')
+        // Disconnected from LiveKit room
         setStatus('disconnected')
         setIsListening(false)
       })

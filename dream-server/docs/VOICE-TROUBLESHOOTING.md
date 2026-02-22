@@ -1,6 +1,6 @@
 # Voice Workflow Troubleshooting Guide
 
-*For Michael's stranger test and Dream Server deployments*
+*Troubleshooting guide for Dream Server voice deployments*
 
 ---
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy LiveKit server for voice chat testing
-# Run on .122: bash scripts/deploy-livekit.sh
+# Usage: bash scripts/deploy-livekit.sh
 #
 # ⚠️  SECURITY WARNING
 # ====================

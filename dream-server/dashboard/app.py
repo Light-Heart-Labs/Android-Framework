@@ -37,7 +37,7 @@ async def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(se
             detail="Authentication required. Provide Bearer token in Authorization header.",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    if credentials.credentials != DASHBOARD_API_KEY:
+    if not secrets.compare_digest(credentials.credentials, DASHBOARD_API_KEY):
         raise HTTPException(status_code=403, detail="Invalid API key.")
     return credentials.credentials
 
@@ -349,7 +349,7 @@ def render_gpu_cluster(gpu_data: dict, cluster_data: dict) -> str:
     gpus = gpu_data.get("gpus", [])
     
     # Determine node IPs for display
-    node_ips = {0: ".122", 1: ".143"}
+    node_ips = {0: "node-0", 1: "node-1"}
     
     for gpu in gpus:
         idx = gpu.get("index", 0)
@@ -533,7 +533,7 @@ def render_agents(agents_data: dict) -> str:
             uptime_str = f"{uptime_sec // 60}m {uptime_sec % 60}s"
         
         row_class = "agent-row-active" if status == "active" else ""
-        node_badge_class = "primary" if agent.get("node") == ".122" else ""
+        node_badge_class = "primary" if agent.get("node") == "node-0" else ""
         
         # XSS protection: escape all dynamic values (B5 fix)
         agent_name = html.escape(str(agent.get("name", "Unknown")))

@@ -27,12 +27,7 @@ Token Spy provides transparent LLM API monitoring — capturing token usage, cos
 
 ### 1. Prerequisites
 
-Ensure Token Spy repo is cloned:
-```bash
-cd ..
-git clone git@github.com:Lightheartdevs/token-spy.git products/token-spy
-cd dream-server
-```
+Token Spy is included in the Lighthouse AI repo at `token-spy/`. No separate clone needed.
 
 ### 2. Configure Environment
 

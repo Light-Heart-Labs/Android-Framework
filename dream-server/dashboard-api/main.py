@@ -806,7 +806,7 @@ MODEL_CATALOG = [
         "quantization": "AWQ"
     },
     {
-        "id": "Qwen/Qwen2.5-32B-Instruct-AWQ",
+        "id": "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
         "name": "Qwen2.5 Coder 32B AWQ",
         "size_gb": 15.7,
         "vram_required_gb": 14,
@@ -1139,9 +1139,9 @@ async def voice_token(request: VoiceTokenRequest, api_key: str = Depends(verify_
                     agent_name=""  # Empty string dispatches any available agent
                 )
             )
-            print(f"Agent dispatched to room {request.room}")
+            logger.info(f"Agent dispatched to room {request.room}")
         except Exception as dispatch_error:
-            print(f"Agent dispatch failed (agent may already be in room): {dispatch_error}")
+            logger.warning(f"Agent dispatch failed (agent may already be in room): {dispatch_error}")
         
         return {
             "token": token.to_jwt(),

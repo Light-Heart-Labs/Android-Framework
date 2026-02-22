@@ -18,7 +18,7 @@ NC='\033[0m'
 # URLs
 VLLM_URL="${VLLM_URL:-http://localhost:8000}"
 WHISPER_URL="${WHISPER_URL:-http://localhost:9000}"
-PIPER_URL="${PIPER_URL:-http://localhost:5000}"
+TTS_URL="${TTS_URL:-http://localhost:8880}"
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
 
 # Get script directory
@@ -112,8 +112,8 @@ demo_voice() {
         echo ""
     fi
     
-    if ! check_service "$PIPER_URL" "/health"; then
-        echo -e "${YELLOW}Piper (TTS) not running. Voice output disabled.${NC}"
+    if ! check_service "$TTS_URL" "/health"; then
+        echo -e "${YELLOW}Kokoro (TTS) not running. Voice output disabled.${NC}"
         echo -e "${DIM}Enable with: docker compose --profile voice up -d${NC}"
         echo ""
     fi
@@ -128,7 +128,7 @@ demo_voice() {
         echo "  curl -X POST ${WHISPER_URL}/asr -F 'audio_file=@${EXAMPLES_DIR}/sample-audio.wav'"
         echo ""
         echo -e "  ${CYAN}# Generate speech${NC}"
-        echo "  curl -X POST ${PIPER_URL}/synthesize -d '{\"text\": \"Hello from Dream Server\"}' -o output.wav"
+        echo "  curl -X POST ${TTS_URL}/synthesize -d '{\"text\": \"Hello from Dream Server\"}' -o output.wav"
     else
         echo "Voice demo requires audio recording."
         echo ""
@@ -141,7 +141,7 @@ demo_voice() {
         echo "  curl -X POST ${WHISPER_URL}/asr -F 'audio_file=@test.wav'"
         echo ""
         echo "  # Text to speech"
-        echo "  curl -X POST ${PIPER_URL}/synthesize -d '{\"text\": \"Your text here\"}' -o output.wav"
+        echo "  curl -X POST ${TTS_URL}/synthesize -d '{\"text\": \"Your text here\"}' -o output.wav"
     fi
     
     echo ""
@@ -310,7 +310,7 @@ show_status() {
     services=(
         "vLLM (LLM)|$VLLM_URL|/health"
         "Whisper (STT)|$WHISPER_URL|/health"
-        "Piper (TTS)|$PIPER_URL|/health"
+        "Kokoro (TTS)|$TTS_URL|/health"
         "Qdrant (Vector DB)|$QDRANT_URL|/healthz"
         "n8n (Workflows)|http://localhost:5678|/healthz"
         "Open WebUI|http://localhost:3000|/"

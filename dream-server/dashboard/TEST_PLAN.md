@@ -70,8 +70,8 @@ export N8N_URL=http://localhost:5678
 export WHISPER_URL=http://localhost:9000
 export KOKORO_URL=http://localhost:8880
 export LIVEKIT_URL=ws://localhost:7880
-export LIVEKIT_API_KEY=devkey
-export LIVEKIT_API_SECRET=secret
+export LIVEKIT_API_KEY=<from-your-.env>
+export LIVEKIT_API_SECRET=<from-your-.env>
 ```
 
 ---

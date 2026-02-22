@@ -31,12 +31,12 @@ curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main
 
 | Feature | Dream Server | Ollama + WebUI | LocalAI |
 |---------|:---:|:---:|:---:|
-| One-command install | **Yes** | Manual | Manual |
-| Hardware auto-detect | **Yes** | No | No |
-| Voice agents (STT + TTS + WebRTC) | **Yes** | No | Limited |
-| vLLM inference speed | **Yes** | No | No |
-| Workflow automation | **n8n built in** | No | No |
-| Privacy tools | **PII redaction** | No | No |
+| Full-stack one-command install | **LLM + voice + workflows + RAG + privacy** | LLM + chat only | LLM only |
+| Hardware auto-detect + model selection | **Yes** | No | No |
+| Voice agents (STT + TTS + WebRTC) | **Built in** | No | Limited |
+| Inference engine | **vLLM** (continuous batching) | llama.cpp | llama.cpp |
+| Workflow automation | **n8n (400+ integrations)** | No | No |
+| PII redaction / privacy tools | **Built in** | No | No |
 | Multi-GPU | **Yes** | Partial | Partial |
 
 ---
