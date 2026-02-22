@@ -32,7 +32,7 @@ cd Lighthouse-AI/dream-server
 
 Better flow would be:
 ```bash
-curl -sSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/get-dream-server.sh | bash
 ```
 
 ### 3. No Landing Page
@@ -107,7 +107,7 @@ Run your own ChatGPT locally in 10 minutes.
 - Zero monthly fees
 
 One command:
-curl -sSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/get-dream-server.sh | bash
 
 Open source. Privacy-first.
 ```

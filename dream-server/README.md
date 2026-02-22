@@ -13,7 +13,7 @@
 
 ```bash
 # One-line install (Linux/WSL)
-curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/get-dream-server.sh | bash
 ```
 
 Or manually:
@@ -58,6 +58,8 @@ The Windows installer handles WSL2 setup, Docker Desktop, and NVIDIA drivers aut
 |-----------|---------|------|
 | **vLLM** | High-performance LLM inference | 8000 |
 | **Open WebUI** | Beautiful chat interface | 3000 |
+| **Dashboard** | System status, GPU metrics, service health | 3001 |
+| **Privacy Shield** | PII redaction for external API calls | 8085 |
 | **Whisper** | Speech-to-text (optional) | 9000 |
 | **Kokoro** | Text-to-speech (optional) | 8880 |
 | **LiveKit** | Real-time WebRTC voice chat (optional) | 7880 |

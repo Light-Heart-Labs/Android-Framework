@@ -52,7 +52,7 @@ End-to-end validation checklist for testing the Dream Server installer (`install
 
 - [ ] **Execute setup script**
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/get-dream-server.sh | bash
   ```
   OR for local testing:
   ```bash
