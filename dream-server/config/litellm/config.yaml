@@ -1,0 +1,36 @@
+# LiteLLM Configuration
+# Use this when running multiple models or providers
+
+model_list:
+  # Local vLLM model
+  - model_name: local-qwen
+    litellm_params:
+      model: openai/Qwen/Qwen2.5-32B-Instruct-AWQ
+      api_base: http://vllm:8000/v1
+      api_key: ${VLLM_API_KEY:-}
+    model_info:
+      max_tokens: 8192
+      
+  # Example: Add OpenAI for comparison
+  # - model_name: gpt-4o
+  #   litellm_params:
+  #     model: gpt-4o
+  #     api_key: ${OPENAI_API_KEY}
+
+  # Example: Add Claude
+  # - model_name: claude-sonnet
+  #   litellm_params:
+  #     model: claude-3-5-sonnet-20241022
+  #     api_key: ${ANTHROPIC_API_KEY}
+
+# General settings
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+  num_retries: 3
+
+# Router settings (for load balancing multiple backends)
+router_settings:
+  routing_strategy: simple-shuffle
+  model_group_alias:
+    default: local-qwen

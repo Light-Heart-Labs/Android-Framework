@@ -1,0 +1,52 @@
+{
+  "intent": "restaurant_reservation",
+  "patterns": [
+    "book a table",
+    "make a reservation",
+    "restaurant booking",
+    "reserve a table",
+    "dinner reservation",
+    "lunch reservation",
+    "want to eat out",
+    "book restaurant"
+  ],
+  "steps": [
+    {
+      "response": "I'd be happy to help you make a restaurant reservation! What date would you like to dine?",
+      "field": "date",
+      "validation": {
+        "type": "regex",
+        "pattern": "\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{4}|today|tomorrow|next\\s+\\w+",
+        "error_message": "Please provide a valid date (e.g., 'today', 'tomorrow', '12/15/2024', or 'next Friday')."
+      }
+    },
+    {
+      "response": "What time would you prefer for your reservation?",
+      "field": "time",
+      "validation": {
+        "type": "regex",
+        "pattern": "\\d{1,2}:\\d{2}|\\d{1,2}\\s*(am|pm)",
+        "error_message": "Please provide a valid time (e.g., '7:30 PM' or '19:30')."
+      }
+    },
+    {
+      "response": "How many people will be in your party?",
+      "field": "party_size",
+      "validation": {
+        "type": "regex",
+        "pattern": "\\d+",
+        "error_message": "Please tell me the number of people (e.g., '2', 'party of 4')."
+      }
+    },
+    {
+      "response": "Do you have any dietary restrictions, allergies, or special requests for your reservation?",
+      "field": "special_requests",
+      "validation": {
+        "type": "any",
+        "error_message": "Please let me know about any special requirements."
+      }
+    }
+  ],
+  "completion_message": "Excellent! I've collected all the details for your restaurant reservation:\n\n📅 Date: {date}\n🕐 Time: {time}\n👥 Party Size: {party_size} people\n📝 Special Requests: {special_requests}\n\nIn a real system, I would now process this booking and provide you with a confirmation number. Thank you for choosing our service!",
+  "fallback_response": "I'm having trouble understanding that. Would you like me to help you make a restaurant reservation? I can assist with booking a table for you."
+}

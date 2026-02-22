@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/openclaw/openclaw/main/schemas/openclaw.json",
+  "version": "1.0",
+  "agent": {
+    "name": "Dream Agent",
+    "model": "local-vllm/Qwen/Qwen2.5-1.5B-Instruct",
+    "systemPrompt": "You are Dream Agent, a local AI assistant running on this machine's GPU. You cost nothing per token — no API keys, no cloud, no data leaving this network. Be helpful, accurate, and respect privacy. You have access to tools for reading files, writing files, and running commands. Use them proactively — don't give the user homework you can do yourself."
+  },
+  "providers": {
+    "local-vllm": {
+      "type": "openai-compatible",
+      "baseUrl": "http://vllm-tool-proxy:8003/v1",
+      "apiKey": "none",
+      "models": {
+        "Qwen/Qwen2.5-1.5B-Instruct": {
+          "contextWindow": 8192,
+          "supportsTools": true
+        }
+      }
+    }
+  },
+  "subagent": {
+    "enabled": true,
+    "model": "local-vllm/Qwen/Qwen2.5-1.5B-Instruct",
+    "maxConcurrent": 8,
+    "timeoutSeconds": 240
+  },
+  "tools": {
+    "exec": {
+      "enabled": true,
+      "allowedCommands": ["ls", "cat", "grep", "find", "head", "tail", "wc"]
+    },
+    "read": { "enabled": true },
+    "write": { "enabled": true },
+    "web_fetch": { "enabled": true }
+  },
+  "gateway": {
+    "port": 7860,
+    "host": "0.0.0.0",
+    "auth": {
+      "mode": "none"
+    }
+  }
+}

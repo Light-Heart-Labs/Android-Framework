@@ -1,0 +1,17 @@
+port: 7880
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+  # node_ip removed - let LiveKit auto-detect
+
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+logging:
+  level: info
+  json: false
+
+room:
+  empty_timeout: 300
+  max_participants: 10

@@ -1,0 +1,30 @@
+# LiveKit Server Configuration for Dream Server
+# https://docs.livekit.io/home/self-hosting/vm/#config
+#
+# SECURITY: API keys are set via LIVEKIT_KEYS environment variable
+# in docker-compose, NOT in this file. Never commit secrets here.
+
+port: 7880
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  tcp_port: 7881
+  use_external_ip: false
+
+# Keys are injected via LIVEKIT_KEYS environment variable
+# Do not add a 'keys:' section here - it will conflict with env var
+
+logging:
+  level: info
+  pion_level: warn
+
+room:
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: audio/red
+  max_participants: 10
+  empty_timeout: 300
+  departure_timeout: 20
+
+turn:
+  enabled: false

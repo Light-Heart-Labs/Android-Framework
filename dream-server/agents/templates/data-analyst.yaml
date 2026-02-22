@@ -1,0 +1,89 @@
+# Data Analyst Agent Template
+# Mission: M7 (OpenClaw Frontier Pushing)
+# Validated on: Qwen2.5-32B-Instruct-AWQ
+# Purpose: CSV/JSON analysis, data processing, visualization guidance
+
+agent:
+  name: data-analyst
+  description: "Data analysis assistant for processing CSV, JSON, and structured data"
+  
+  model: local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ
+  # Coder model excels at data manipulation tasks
+  
+  system_prompt: |
+    You are a data analysis assistant. You help users understand, process, and visualize data.
+    
+    Your capabilities:
+    - Read and analyze CSV, JSON, and text files
+    - Write Python scripts for data processing
+    - Suggest appropriate visualizations
+    - Identify patterns, outliers, and insights
+    - Clean and transform data
+    
+    Workflow:
+    1. First examine the data structure (columns, types, sample rows)
+    2. Report basic statistics (row count, nulls, distributions)
+    3. Perform requested analysis
+    4. Present findings clearly with code examples
+    
+    Best practices:
+    - Always validate data before processing
+    - Handle missing values appropriately
+    - Use pandas for tabular data, json module for JSON
+    - Suggest matplotlib/seaborn/plotly for visualization
+    - Write reusable functions when possible
+    
+    When writing analysis code:
+    - Include comments explaining each step
+    - Show sample output
+    - Handle edge cases (empty files, malformed data)
+    - Suggest next steps or deeper analysis
+
+  tools:
+    - read
+    - write
+    - edit
+    - exec
+    
+  validation:
+    test_prompts:
+      - "Analyze this CSV and show column statistics"
+      - "Write a script to find duplicate rows in a dataset"
+      - "How would you visualize this sales data over time?"
+    
+    success_criteria:
+      - Correctly reads and parses data files
+      - Generates working Python analysis code
+      - Provides meaningful insights
+      - Handles errors gracefully
+
+  example_workflows:
+    - name: CSV Exploration
+      steps:
+        - Read CSV file with pandas
+        - Display head(), info(), describe()
+        - Identify data quality issues
+        - Suggest cleaning steps
+        
+    - name: JSON Processing
+      steps:
+        - Load and validate JSON structure
+        - Normalize nested data if needed
+        - Extract specific fields
+        - Transform and output results
+        
+    - name: Time Series Analysis
+      steps:
+        - Parse datetime columns
+        - Resample to appropriate granularity
+        - Calculate rolling statistics
+        - Suggest visualization
+
+  usage:
+    import: "agents/templates/data-analyst.yaml"
+    
+  notes:
+    - Requires pandas - suggest installing if not available
+    - For files >100MB, suggest sampling or chunking
+    - Can generate visualization code but cannot display images directly
+    - Works best with structured, clean data

@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Agent Dashboard</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root {
+            --card-padding: 1rem;
+            --gap: 1rem;
+        }
+        body {
+            background: var(--background-color);
+        }
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--muted-border-color);
+        }
+        .dashboard-header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .metric-card {
+            background: var(--card-background-color);
+            padding: var(--card-padding);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--muted-border-color);
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0;
+            line-height: 1.2;
+        }
+        .metric-label {
+            color: var(--muted-color);
+            font-size: 0.875rem;
+            margin: 0 0 0.5rem 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .metric-sub {
+            font-size: 0.875rem;
+            margin: 0.25rem 0 0 0;
+            color: var(--muted-color);
+        }
+        /* GPU Progress Bars */
+        .gpu-bar {
+            height: 12px;
+            background: var(--muted-border-color);
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        .gpu-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+            transition: width 0.5s ease;
+            border-radius: 6px;
+        }
+        .gpu-bar-fill.warning {
+            background: linear-gradient(90deg, #f5a623, #f7b731);
+        }
+        .gpu-bar-fill.danger {
+            background: linear-gradient(90deg, #e74c3c, #c0392b);
+        }
+        /* Status indicators */
+        .status-ok { color: #2ecc71; }
+        .status-warn { color: #f5a623; }
+        .status-error { color: #e74c3c; }
+        .status-unknown { color: var(--muted-color); }
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .status-indicator.ok { background: #2ecc71; }
+        .status-indicator.warn { background: #f5a623; }
+        .status-indicator.error { background: #e74c3c; }
+        .status-indicator.unknown { background: var(--muted-color); }
+        /* Grid layouts */
+        .grid-3 { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: var(--gap);
+            margin-bottom: var(--gap);
+        }
+        .grid-2 { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: var(--gap);
+            margin-bottom: var(--gap);
+        }
+        @media (max-width: 900px) {
+            .grid-3 { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .grid-3, .grid-2 { grid-template-columns: 1fr; }
+        }
+        /* Chart container */
+        .chart-section {
+            margin-bottom: var(--gap);
+        }
+        .chart-container { 
+            height: 200px; 
+            position: relative; 
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .chart-stats {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.875rem;
+        }
+        .chart-stat {
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-stat-value {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        .chart-stat-label {
+            color: var(--muted-color);
+            font-size: 0.75rem;
+        }
+        /* Agent table */
+        .agent-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .agent-table th,
+        .agent-table td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--muted-border-color);
+        }
+        .agent-table th {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted-color);
+            font-weight: 500;
+        }
+        .agent-table tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        .agent-row-active {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        /* Error log */
+        .error-log {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .error-item { 
+            padding: 0.5rem 0.75rem; 
+            background: rgba(231, 76, 60, 0.1); 
+            border-left: 3px solid #e74c3c;
+            margin-bottom: 0.5rem;
+            font-family: ui-monospace, monospace;
+            font-size: 0.8rem;
+        }
+        .error-timestamp { 
+            color: var(--muted-color); 
+            margin-right: 0.5rem;
+        }
+        /* Footer */
+        .last-updated { 
+            font-size: 0.75rem; 
+            color: var(--muted-color); 
+        }
+        /* GPU mini-chart */
+        .gpu-mini-chart {
+            height: 60px;
+            margin-top: 0.5rem;
+        }
+        /* Stats row */
+        .stats-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        /* Loading state */
+        .loading {
+            opacity: 0.5;
+        }
+        /* Node badge */
+        .node-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: rgba(100, 200, 255, 0.2);
+            color: rgb(100, 200, 255);
+        }
+        .node-badge.primary {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <main class="container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <h1>🤖 Agent Dashboard</h1>
+            <div class="header-controls">
+                <label style="display:flex; align-items:center; gap:0.5rem; margin:0; cursor:pointer;">
+                    <input type="checkbox" id="auto-refresh" checked onchange="toggleRefresh()" style="margin:0;">
+                    <span style="font-size:0.875rem;">Auto-refresh</span>
+                </label>
+                <span id="last-updated" class="last-updated">—</span>
+            </div>
+        </header>
+
+        <!-- Top Row: GPU Cards + Cluster Health -->
+        <section class="grid-3" id="gpu-cluster-section">
+            <div id="gpu-cluster-container" 
+                 hx-get="/api/fragments/gpu-cluster" 
+                 hx-trigger="load, every 5s" 
+                 hx-swap="innerHTML"
+                 style="display:contents;">
+                <!-- GPU cards loaded via htmx -->
+                <article class="metric-card loading">
+                    <p class="metric-label">GPU 0</p>
+                    <p class="metric-sub">Loading...</p>
+                </article>
+                <article class="metric-card loading">
+                    <p class="metric-label">GPU 1</p>
+                    <p class="metric-sub">Loading...</p>
+                </article>
+                <article class="metric-card loading">
+                    <p class="metric-label">Cluster Health</p>
+                    <p class="metric-sub">Loading...</p>
+                </article>
+            </div>
+        </section>
+
+        <!-- Throughput Chart -->
+        <section class="chart-section">
+            <article class="metric-card">
+                <div class="chart-header">
+                    <p class="metric-label" style="margin:0;">Token Throughput</p>
+                    <div class="chart-stats">
+                        <div class="chart-stat">
+                            <span class="chart-stat-value status-ok" id="tps-current">0</span>
+                            <span class="chart-stat-label">Current t/s</span>
+                        </div>
+                        <div class="chart-stat">
+                            <span class="chart-stat-value" id="tps-avg">0</span>
+                            <span class="chart-stat-label">Avg t/s</span>
+                        </div>
+                        <div class="chart-stat">
+                            <span class="chart-stat-value" id="tps-peak">0</span>
+                            <span class="chart-stat-label">Peak t/s</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="throughputChart"></canvas>
+                </div>
+            </article>
+        </section>
+
+        <!-- Middle Row: Sessions + Task Stats -->
+        <section class="grid-2">
+            <article class="metric-card" id="sessions-container" 
+                     hx-get="/api/fragments/sessions" 
+                     hx-trigger="load, every 5s" 
+                     hx-swap="innerHTML">
+                <p class="metric-label">Active Sessions</p>
+                <p class="metric-value">—</p>
+                <p class="metric-sub">Loading...</p>
+            </article>
+            <article class="metric-card" id="tasks-container" 
+                     hx-get="/api/fragments/tasks" 
+                     hx-trigger="load, every 5s" 
+                     hx-swap="innerHTML">
+                <p class="metric-label">Task Stats (24h)</p>
+                <p class="metric-sub">Loading...</p>
+            </article>
+        </section>
+
+        <!-- GPU Utilization Charts -->
+        <section class="chart-section">
+            <article class="metric-card">
+                <p class="metric-label" style="margin-bottom:1rem;">GPU Utilization History</p>
+                <div class="chart-container" style="height:150px;">
+                    <canvas id="gpuUtilChart"></canvas>
+                </div>
+            </article>
+        </section>
+
+        <!-- Sub-Agent Status Table -->
+        <section>
+            <article class="metric-card">
+                <p class="metric-label" style="margin-bottom:0.75rem;">Sub-Agent Status</p>
+                <div id="agents-container" 
+                     hx-get="/api/fragments/agents" 
+                     hx-trigger="load, every 5s" 
+                     hx-swap="innerHTML">
+                    <table class="agent-table">
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Status</th>
+                                <th>Node</th>
+                                <th>Tasks</th>
+                                <th>Uptime</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" style="text-align:center; color:var(--muted-color);">
+                                    Loading agent data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+
+        <!-- Recent Errors -->
+        <section>
+            <article class="metric-card">
+                <p class="metric-label" style="margin-bottom:0.75rem;">Recent Issues</p>
+                <div class="error-log" id="errors-container" 
+                     hx-get="/api/fragments/errors" 
+                     hx-trigger="load, every 10s" 
+                     hx-swap="innerHTML">
+                    <p style="color:var(--muted-color); text-align:center; padding:1rem;">
+                        No recent errors
+                    </p>
+                </div>
+            </article>
+        </section>
+    </main>
+
+    <script>
+        // ============================================
+        // Throughput Chart
+        // ============================================
+        const maxDataPoints = 30;
+        const throughputHistory = new Array(maxDataPoints).fill(0);
+        const throughputLabels = new Array(maxDataPoints).fill('');
+        let throughputChart;
+        
+        function initThroughputChart() {
+            const ctx = document.getElementById('throughputChart').getContext('2d');
+            throughputChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: throughputLabels,
+                    datasets: [{
+                        label: 'Tokens/sec',
+                        data: throughputHistory,
+                        borderColor: 'rgb(100, 200, 255)',
+                        backgroundColor: 'rgba(100, 200, 255, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: 'rgba(255,255,255,0.5)' }
+                        }
+                    },
+                    animation: { duration: 200 }
+                }
+            });
+        }
+        
+        function updateThroughputChart(tps) {
+            if (!throughputChart) return;
+            
+            throughputHistory.shift();
+            throughputHistory.push(tps || 0);
+            throughputChart.update('none');
+            
+            // Update stats
+            const current = tps || 0;
+            const nonZero = throughputHistory.filter(v => v > 0);
+            const avg = nonZero.length ? nonZero.reduce((a,b) => a+b, 0) / nonZero.length : 0;
+            const peak = Math.max(...throughputHistory);
+            
+            document.getElementById('tps-current').textContent = current.toFixed(1);
+            document.getElementById('tps-avg').textContent = avg.toFixed(1);
+            document.getElementById('tps-peak').textContent = peak.toFixed(1);
+        }
+        
+        // ============================================
+        // GPU Utilization Chart
+        // ============================================
+        const gpuHistoryLength = 30;
+        const gpu0History = new Array(gpuHistoryLength).fill(0);
+        const gpu1History = new Array(gpuHistoryLength).fill(0);
+        let gpuUtilChart;
+        
+        function initGpuUtilChart() {
+            const ctx = document.getElementById('gpuUtilChart').getContext('2d');
+            gpuUtilChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: new Array(gpuHistoryLength).fill(''),
+                    datasets: [
+                        {
+                            label: 'GPU 0 (.122)',
+                            data: gpu0History,
+                            borderColor: 'rgb(46, 204, 113)',
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'GPU 1 (.143)',
+                            data: gpu1History,
+                            borderColor: 'rgb(155, 89, 182)',
+                            backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { 
+                            display: true, 
+                            position: 'top',
+                            labels: { 
+                                color: 'rgba(255,255,255,0.7)',
+                                boxWidth: 12,
+                                padding: 15
+                            }
+                        } 
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            beginAtZero: true,
+                            max: 100,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { 
+                                color: 'rgba(255,255,255,0.5)',
+                                callback: v => v + '%'
+                            }
+                        }
+                    },
+                    animation: { duration: 200 }
+                }
+            });
+        }
+        
+        function updateGpuUtilChart(gpu0Util, gpu1Util) {
+            if (!gpuUtilChart) return;
+            
+            gpu0History.shift();
+            gpu0History.push(gpu0Util || 0);
+            
+            gpu1History.shift();
+            gpu1History.push(gpu1Util || 0);
+            
+            gpuUtilChart.update('none');
+        }
+        
+        // ============================================
+        // Auto-refresh toggle
+        // ============================================
+        function toggleRefresh() {
+            const enabled = document.getElementById('auto-refresh').checked;
+            document.querySelectorAll('[hx-trigger*="every"]').forEach(el => {
+                const trigger = el.getAttribute('hx-trigger');
+                if (enabled) {
+                    // Restore periodic refresh
+                    if (trigger === 'load') {
+                        el.setAttribute('hx-trigger', 'load, every 5s');
+                    }
+                } else {
+                    // Remove periodic, keep initial load
+                    el.setAttribute('hx-trigger', 'load');
+                }
+                htmx.process(el);
+            });
+        }
+        
+        // ============================================
+        // HTMX event handlers
+        // ============================================
+        document.addEventListener('htmx:afterRequest', function(evt) {
+            // Update last updated timestamp
+            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+        });
+        
+        // Listen for custom events from htmx responses
+        document.addEventListener('htmx:afterSettle', function(evt) {
+            // Check if GPU data was returned (contains data attributes)
+            const gpuContainer = document.getElementById('gpu-cluster-container');
+            if (gpuContainer) {
+                const gpu0Util = gpuContainer.dataset.gpu0Util;
+                const gpu1Util = gpuContainer.dataset.gpu1Util;
+                if (gpu0Util !== undefined) {
+                    updateGpuUtilChart(parseFloat(gpu0Util) || 0, parseFloat(gpu1Util) || 0);
+                }
+            }
+        });
+        
+        // Fetch metrics for chart updates
+        async function fetchMetrics() {
+            try {
+                const response = await fetch('/api/metrics');
+                const data = await response.json();
+                
+                // Update throughput chart
+                if (data.vllm && data.vllm.tokens_per_second_current !== undefined) {
+                    updateThroughputChart(data.vllm.tokens_per_second_current);
+                }
+                
+                // Update GPU util chart
+                if (data.gpu && data.gpu.gpus) {
+                    const gpu0 = data.gpu.gpus.find(g => g.index === 0);
+                    const gpu1 = data.gpu.gpus.find(g => g.index === 1);
+                    updateGpuUtilChart(
+                        gpu0 ? gpu0.utilization_percent : 0,
+                        gpu1 ? gpu1.utilization_percent : 0
+                    );
+                }
+            } catch (e) {
+                console.log('Metrics fetch error:', e);
+            }
+        }
+        
+        // ============================================
+        // Initialize
+        // ============================================
+        document.addEventListener('DOMContentLoaded', function() {
+            initThroughputChart();
+            initGpuUtilChart();
+            
+            // Periodic metrics fetch for charts (htmx handles the fragments)
+            setInterval(fetchMetrics, 5000);
+            fetchMetrics(); // Initial fetch
+        });
+    </script>
+</body>
+</html>

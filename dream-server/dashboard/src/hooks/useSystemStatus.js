@@ -1,0 +1,82 @@
+import { useState, useEffect } from 'react'
+
+const POLL_INTERVAL = 5000 // 5 seconds
+
+// Mock data for development/demo - gated behind VITE_USE_MOCK_DATA env var
+const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'
+
+// Mock data for development/demo
+function getMockStatus() {
+  return {
+    gpu: {
+      name: 'NVIDIA RTX 4070 Ti Super',
+      vramUsed: 13.2,
+      vramTotal: 16,
+      utilization: 45,
+      temperature: 62
+    },
+    services: [
+      { name: 'vLLM', status: 'healthy', port: 8000, uptime: 7200 },
+      { name: 'Open WebUI', status: 'healthy', port: 3000, uptime: 7200 },
+      { name: 'Whisper (STT)', status: 'healthy', port: 9000, uptime: 7200 },
+      { name: 'Kokoro (TTS)', status: 'healthy', port: 8880, uptime: 7200 },
+      { name: 'Qdrant', status: 'healthy', port: 6333, uptime: 7200 },
+      { name: 'n8n', status: 'healthy', port: 5678, uptime: 7200 }
+    ],
+    model: {
+      name: 'Qwen2.5-32B-Instruct-AWQ',
+      tokensPerSecond: 54,
+      contextLength: 32768
+    },
+    bootstrap: null, // null means no bootstrap in progress
+    uptime: 7200, // seconds
+    version: '1.0.0',
+    tier: 'Professional'
+  }
+}
+
+const MOCK_STATUS = getMockStatus()
+
+// Named export for dev-only mocking (explicit opt-in via VITE_USE_MOCK_DATA)
+export { getMockStatus }
+
+export function useSystemStatus() {
+  const [status, setStatus] = useState(USE_MOCK_DATA ? MOCK_STATUS : {
+    gpu: null,
+    services: [],
+    model: null,
+    bootstrap: null,
+    uptime: 0
+  })
+  const [loading, setLoading] = useState(!USE_MOCK_DATA)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      // If using mock data, don't attempt API call
+      if (USE_MOCK_DATA) {
+        setLoading(false)
+        return
+      }
+
+      try {
+        const response = await fetch('/api/status')
+        if (!response.ok) throw new Error('Failed to fetch status')
+        const data = await response.json()
+        setStatus(data)
+        setError(null)
+      } catch (err) {
+        setError(err.message)
+        // No silent fallback - let error propagate to UI
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStatus()
+    const interval = setInterval(fetchStatus, POLL_INTERVAL)
+    return () => clearInterval(interval)
+  }, [])
+
+  return { status, loading, error }
+}

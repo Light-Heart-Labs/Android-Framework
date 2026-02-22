@@ -1,0 +1,268 @@
+{
+  "name": "Daily Digest - Morning Briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Morning Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "notes": "Triggers daily at 7:00 AM"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-digest",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 500],
+      "notes": "POST /webhook/trigger-digest to run manually"
+    },
+    {
+      "parameters": {
+        "url": "https://news.ycombinator.com/rss",
+        "options": {}
+      },
+      "id": "rss-hackernews",
+      "name": "HackerNews RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [460, 200],
+      "notes": "Customize with your preferred RSS feeds"
+    },
+    {
+      "parameters": {
+        "url": "https://feeds.arstechnica.com/arstechnica/technology-lab",
+        "options": {}
+      },
+      "id": "rss-tech",
+      "name": "Tech News RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect and format all RSS items\nconst allItems = $input.all();\nconst headlines = allItems.slice(0, 20).map((item, idx) => {\n  return `${idx + 1}. ${item.json.title}\\n   ${item.json.link}\\n   ${(item.json.contentSnippet || item.json.description || '').slice(0, 200)}...`;\n}).join('\\n\\n');\n\nconst now = new Date();\nconst dateStr = now.toLocaleDateString('en-US', { \n  weekday: 'long', \n  year: 'numeric', \n  month: 'long', \n  day: 'numeric' \n});\n\nreturn [{\n  json: {\n    date: dateStr,\n    item_count: allItems.length,\n    headlines: headlines,\n    source: 'RSS Feeds'\n  }\n}];"
+      },
+      "id": "format-rss",
+      "name": "Format RSS Headlines",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://vllm:8000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'Qwen/Qwen2.5-32B-Instruct-AWQ', messages: [{ role: 'system', content: 'You are a helpful morning briefing assistant. Create a concise, engaging digest of the news headlines provided. Group by theme, highlight the most important stories, and add brief context where helpful. Keep it scannable and under 500 words.' }, { role: 'user', content: 'Create my morning briefing for ' + $json.date + ':\\n\\n' + $json.headlines }], temperature: 0.7, max_tokens: 1024, stream: false }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "summarize-llm",
+      "name": "Generate Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const digest = $json.choices[0].message.content;\nconst date = $('Format RSS Headlines').item.json.date;\nconst itemCount = $('Format RSS Headlines').item.json.item_count;\n\nconst output = `# Daily Digest\\n**${date}**\\n\\n---\\n\\n${digest}\\n\\n---\\n*Generated from ${itemCount} articles*\\n`;\n\nreturn [{ json: { digest: output, date: date, item_count: itemCount } }];"
+      },
+      "id": "format-output",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/digest/daily-digest-{{ $now.format('yyyy-MM-dd') }}.md",
+        "options": {},
+        "dataPropertyName": "digest"
+      },
+      "id": "save-file",
+      "name": "Save Digest",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "notes": "Saves to /digest/ folder - configure mount in docker-compose"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, date: $json.date, digest: $json.digest } }}",
+        "options": {}
+      },
+      "id": "respond-digest",
+      "name": "Return Digest",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {},
+      "id": "merge-triggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [460, 600]
+    }
+  ],
+  "connections": {
+    "Morning Schedule": {
+      "main": [
+        [
+          {
+            "node": "HackerNews RSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Tech News RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Merge Triggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Triggers": {
+      "main": [
+        [
+          {
+            "node": "HackerNews RSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Tech News RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HackerNews RSS": {
+      "main": [
+        [
+          {
+            "node": "Format RSS Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tech News RSS": {
+      "main": [
+        [
+          {
+            "node": "Format RSS Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format RSS Headlines": {
+      "main": [
+        [
+          {
+            "node": "Generate Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Digest": {
+      "main": [
+        [
+          {
+            "node": "Format Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Output": {
+      "main": [
+        [
+          {
+            "node": "Save Digest",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Return Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dream-server"
+  },
+  "tags": [
+    {
+      "name": "dream-server",
+      "id": "1"
+    },
+    {
+      "name": "digest",
+      "id": "8"
+    },
+    {
+      "name": "scheduled",
+      "id": "9"
+    }
+  ]
+}

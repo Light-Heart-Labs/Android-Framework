@@ -1,0 +1,24 @@
+{
+  "version": "2.1.0",
+  "release_date": "2026-02-15",
+  "min_version": "2.0.0",
+  "breaking_changes": false,
+  "changelog": [
+    "Added automatic update system (dream-update.sh)",
+    "Improved backup and restore reliability",
+    "Fixed n8n webhook configuration persistence",
+    "Updated Open WebUI to latest stable version"
+  ],
+  "docker_images": {
+    "open-webui": "ghcr.io/open-webui/open-webui:0.5.7",
+    "n8n": "docker.n8n.io/n8nio/n8n:1.78.0",
+    "qdrant": "qdrant/qdrant:v1.13.0",
+    "openclaw": "openclaw/openclaw:latest"
+  },
+  "config_files": [
+    "config/litellm/config.yaml",
+    "config/openclaw/openclaw.json"
+  ],
+  "migrations": [],
+  "migration_notes": "No migrations required for this update (patch release)"
+}

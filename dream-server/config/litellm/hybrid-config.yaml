@@ -1,0 +1,49 @@
+# LiteLLM Hybrid Config — Local Primary + Cloud Fallback
+# Mission: M1 (Fully Local OpenClaw) → M5 (Clonable Dream Setup Server)
+
+model_list:
+  # Local model (primary)
+  - model_name: qwen2.5-32b-instruct-awq
+    litellm_params:
+      model: openai/qwen2.5-32b-instruct-awq
+      api_base: http://localhost:8000/v1
+      api_key: dummy
+    tpm: 100000
+    rpm: 1000
+
+  # Cloud fallback (when local fails)
+  - model_name: gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: ${CLOUD_API_KEY}
+      api_base: ${CLOUD_BASE_URL}
+    tpm: 1000000
+    rpm: 10000
+
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: ${CLOUD_API_KEY}
+      api_base: ${CLOUD_BASE_URL}
+    tpm: 1000000
+    rpm: 10000
+
+litellm_settings:
+  # Retry on failure (local → cloud fallback)
+  num_retries: 3
+  request_timeout: 300
+  
+  # Fallback configuration
+  fallback_models:
+    - gpt-4o
+    - claude-3-5-sonnet
+  
+  # Circuit breaker
+  circuit_breaker:
+    errors: 3
+    timeout: 60
+
+general_settings:
+  master_key: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set}
+  logs_dir: ./logs
+  database_url: ./data/litellm.db

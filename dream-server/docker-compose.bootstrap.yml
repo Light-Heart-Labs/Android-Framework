@@ -1,0 +1,18 @@
+# Dream Server - Bootstrap Mode Override
+# Use with: docker compose -f docker-compose.yml -f docker-compose.bootstrap.yml up -d
+# This starts vLLM with a tiny model for instant startup
+
+services:
+  vllm:
+    command: >
+      --model Qwen/Qwen2.5-1.5B-Instruct
+      --max-model-len 32768
+      --gpu-memory-utilization 0.3
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+    healthcheck:
+      # First run downloads model (~3GB) + CUDA graph compilation — needs generous start period
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 300s

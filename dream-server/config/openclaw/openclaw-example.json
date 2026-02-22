@@ -1,0 +1,55 @@
+{
+  "$schema": "https://docs.openclaw.ai/config-schema.json",
+  "version": "1.0",
+  
+  "llm": {
+    "provider": "openai-compatible",
+    "baseUrl": "http://localhost:8000/v1",
+    "model": "Qwen/Qwen2.5-32B-Instruct-AWQ",
+    "apiKey": ""
+  },
+  
+  "voice": {
+    "stt": {
+      "provider": "whisper",
+      "url": "http://localhost:9000"
+    },
+    "tts": {
+      "provider": "piper",
+      "url": "http://localhost:10200",
+      "voice": "en_US-lessac-medium"
+    }
+  },
+  
+  "memory": {
+    "vectorStore": {
+      "provider": "qdrant",
+      "url": "http://localhost:6333",
+      "collection": "openclaw-memory"
+    }
+  },
+  
+  "tools": {
+    "enabled": true,
+    "parser": "hermes"
+  },
+  
+  "channels": {
+    "discord": {
+      "enabled": false,
+      "token": "YOUR_DISCORD_BOT_TOKEN"
+    },
+    "telegram": {
+      "enabled": false,
+      "token": "YOUR_TELEGRAM_BOT_TOKEN"
+    }
+  },
+  
+  "security": {
+    "allowLocalhost": true,
+    "maxTokens": 8192,
+    "rateLimit": {
+      "requestsPerMinute": 60
+    }
+  }
+}

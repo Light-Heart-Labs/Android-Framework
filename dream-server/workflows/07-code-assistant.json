@@ -1,0 +1,72 @@
+{
+  "name": "Code Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "code-assist",
+        "options": {}
+      },
+      "id": "webhook-code",
+      "name": "Code Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Build appropriate prompt based on task\nconst code = $input.first().json.code || '';\nconst task = ($input.first().json.task || 'explain').toLowerCase();\nconst language = $input.first().json.language || 'auto-detect';\n\nconst prompts = {\n  explain: `Explain what this code does in clear, simple terms. Break down the logic step by step.\n\nCode:\n\\`\\`\\`${language}\\n${code}\\n\\`\\`\\``,\n  \n  improve: `Review this code and suggest improvements. Focus on:\n- Code quality and readability\n- Performance optimizations\n- Best practices\n- Potential bugs\n\nProvide the improved code with comments explaining changes.\n\nCode:\n\\`\\`\\`${language}\\n${code}\\n\\`\\`\\``,\n  \n  debug: `Analyze this code for bugs and issues. Identify:\n- Syntax errors\n- Logic errors\n- Edge cases that might fail\n- Security vulnerabilities\n\nProvide fixes for each issue found.\n\nCode:\n\\`\\`\\`${language}\\n${code}\\n\\`\\`\\``,\n  \n  document: `Add comprehensive documentation to this code:\n- Function/class docstrings\n- Inline comments for complex logic\n- Type hints if applicable\n- Usage examples\n\nCode:\n\\`\\`\\`${language}\\n${code}\\n\\`\\`\\``,\n  \n  test: `Generate unit tests for this code. Include:\n- Happy path tests\n- Edge cases\n- Error handling tests\n- Use appropriate testing framework for the language\n\nCode:\n\\`\\`\\`${language}\\n${code}\\n\\`\\`\\``\n};\n\nconst systemPrompt = 'You are an expert code reviewer and developer. Provide clear, actionable feedback. When showing code, use proper formatting.';\nconst userPrompt = prompts[task] || prompts.explain;\n\nreturn [{ json: { systemPrompt, userPrompt, task, language } }];"
+      },
+      "id": "build-prompt",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://vllm:8000/v1/chat/completions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'Qwen/Qwen2.5-32B-Instruct-AWQ', messages: [{ role: 'system', content: $json.systemPrompt }, { role: 'user', content: $json.userPrompt }], max_tokens: 2048, temperature: 0.3 }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "llm-response",
+      "name": "LLM Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ task: $('Build Prompt').first().json.task, language: $('Build Prompt').first().json.language, result: $json.choices[0].message.content }) }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Return Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [910, 300]
+    }
+  ],
+  "connections": {
+    "Code Input": {
+      "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "LLM Response", "type": "main", "index": 0 }]]
+    },
+    "LLM Response": {
+      "main": [[{ "node": "Return Result", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": [],
+  "pinData": {}
+}

@@ -1,0 +1,270 @@
+# Dream Server — Cluster Tier
+# Multi-GPU (48GB+ total VRAM) — 70B+ models with tensor parallelism
+# Usage: docker compose -f docker-compose.cluster.yml up -d
+#
+# Requirements:
+# - 2+ NVIDIA GPUs with 24GB+ each, or 4+ GPUs with 16GB+ each
+# - NVLink/NVSwitch recommended for optimal tensor parallelism
+# - 64GB+ system RAM recommended
+#
+# Capacity estimate (2x A100 80GB):
+# - 100+ concurrent LLM requests at <100ms latency
+# - 20+ concurrent voice conversations
+# - 72B model with 32K context
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # LLM — Qwen2.5-72B with Tensor Parallelism
+  # ═══════════════════════════════════════════════════════════════
+  vllm:
+    image: vllm/vllm-openai:v0.15.1
+    runtime: nvidia
+    container_name: dream-vllm-cluster
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+      - NCCL_DEBUG=WARN
+    volumes:
+      - ${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    command: >
+      --model Qwen/Qwen2.5-72B-Instruct-AWQ
+      ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+      --tensor-parallel-size ${VLLM_TP_SIZE:-2}
+      --max-model-len 32768
+      --gpu-memory-utilization 0.92
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --served-model-name gpt-4o
+      --trust-remote-code
+      --disable-log-requests
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s  # 72B takes longer to load
+    restart: unless-stopped
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+  # ═══════════════════════════════════════════════════════════════
+  # STT — Whisper Large v3 Turbo (GPU)
+  # Dedicated GPU for STT to avoid contention with LLM
+  # ═══════════════════════════════════════════════════════════════
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    runtime: nvidia
+    container_name: dream-whisper-cluster
+    environment:
+      - WHISPER__MODEL=Systran/faster-whisper-large-v3-turbo
+      - WHISPER__DEVICE=cuda
+      - WHISPER__COMPUTE_TYPE=float16
+      - WHISPER__NUM_WORKERS=4
+      - CUDA_VISIBLE_DEVICES=${WHISPER_GPU:-0}
+    ports:
+      - "8001:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${WHISPER_GPU:-0}"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # TTS — Kokoro GPU (batch synthesis for high throughput)
+  # ═══════════════════════════════════════════════════════════════
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi:v0.6.2-gpu
+    runtime: nvidia
+    container_name: dream-kokoro-cluster
+    environment:
+      - CUDA_VISIBLE_DEVICES=${KOKORO_GPU:-0}
+      - KOKORO_BATCH_SIZE=8
+    ports:
+      - "8880:8880"
+    volumes:
+      - kokoro-cache:/app/cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${KOKORO_GPU:-0}"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # LiveKit — WebRTC Server (production config)
+  # ═══════════════════════════════════════════════════════════════
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: dream-livekit-cluster
+    ports:
+      - "7880:7880"     # HTTP API
+      - "7881:7881"     # WebRTC TCP
+      - "7882:7882/udp" # WebRTC UDP
+      - "50000-50100:50000-50100/udp"  # RTP ports for high concurrency
+    command: >
+      --config /livekit.yaml
+    volumes:
+      - ./livekit-cluster.yaml:/livekit.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7880"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # Voice Agent — High-concurrency configuration
+  # ═══════════════════════════════════════════════════════════════
+  voice-agent:
+    build:
+      context: ./agents/voice
+      dockerfile: Dockerfile
+    container_name: dream-voice-agent-cluster
+    environment:
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set}
+      - LLM_BASE_URL=http://vllm:8000/v1
+      - STT_BASE_URL=http://whisper:8000
+      - TTS_BASE_URL=http://kokoro:8880
+      - AGENT_CONCURRENCY=20
+    depends_on:
+      vllm:
+        condition: service_healthy
+      whisper:
+        condition: service_healthy
+      kokoro:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+    deploy:
+      replicas: 2  # Multiple agent instances for high concurrency
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # Dashboard — Web UI
+  # ═══════════════════════════════════════════════════════════════
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dream-dashboard-cluster
+    ports:
+      - "3001:3001"
+    environment:
+      - VITE_API_URL=http://localhost:3002
+      - VITE_LIVEKIT_URL=ws://localhost:7880
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # API — Backend for Dashboard
+  # ═══════════════════════════════════════════════════════════════
+  api:
+    build:
+      context: ./dashboard-api
+      dockerfile: Dockerfile
+    container_name: dream-api-cluster
+    ports:
+      - "3002:3002"
+    environment:
+      - VLLM_URL=http://vllm:8000
+      - WHISPER_URL=http://whisper:8000
+      - KOKORO_URL=http://kokoro:8880
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set}
+    depends_on:
+      - vllm
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # Metrics — Prometheus + Grafana for cluster monitoring
+  # ═══════════════════════════════════════════════════════════════
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dream-prometheus
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dream-grafana
+    ports:
+      - "${GRAFANA_PORT:-3003}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set in .env}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  kokoro-cache:
+  prometheus-data:
+  grafana-data:
+
+# ═══════════════════════════════════════════════════════════════
+# Configuration Notes:
+# ═══════════════════════════════════════════════════════════════
+#
+# Environment Variables:
+#   VLLM_TP_SIZE    - Tensor parallel size (default: 2, set to GPU count)
+#   WHISPER_GPU     - GPU device ID for Whisper (default: 0)
+#   KOKORO_GPU      - GPU device ID for Kokoro (default: 0)
+#   LIVEKIT_API_KEY - LiveKit API key (default: devkey)
+#   LIVEKIT_API_SECRET - LiveKit API secret (default: secret)
+#   GRAFANA_PASSWORD - Grafana admin password (default: admin)
+#
+# Recommended GPU Allocation (4x GPU setup):
+#   GPU 0-1: vLLM (tensor parallel)
+#   GPU 2: Whisper STT
+#   GPU 3: Kokoro TTS
+#
+# For 2x GPU setup:
+#   GPU 0-1: vLLM (tensor parallel)
+#   GPU 0: Whisper + Kokoro (shared, time-sliced)
+#
+# Scaling:
+#   - Adjust VLLM_TP_SIZE to match available GPUs
+#   - For more concurrent voice, add voice-agent replicas
+#   - Monitor with Grafana at :3000

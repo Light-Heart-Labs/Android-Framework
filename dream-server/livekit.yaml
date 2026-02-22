@@ -1,0 +1,10 @@
+
+# Agent dispatch
+agent:
+  dispatch:
+    enabled: true
+    
+# Room configuration for auto-dispatch
+room_defaults:
+  agent_dispatch:
+    enabled: true

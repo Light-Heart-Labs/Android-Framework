@@ -1,0 +1,185 @@
+{
+  "name": "RAG Document Q&A Demo",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-doc",
+        "options": {}
+      },
+      "id": "webhook-upload",
+      "name": "Upload Document",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Chunk text into overlapping segments\nconst text = $input.first().json.text || $input.first().json.content || '';\nconst chunkSize = 500;\nconst overlap = 100;\nconst chunks = [];\n\nfor (let i = 0; i < text.length; i += chunkSize - overlap) {\n  const chunk = text.slice(i, i + chunkSize);\n  if (chunk.trim()) {\n    chunks.push({\n      text: chunk,\n      index: chunks.length,\n      start: i,\n      end: Math.min(i + chunkSize, text.length)\n    });\n  }\n}\n\nreturn chunks.map(c => ({ json: c }));"
+      },
+      "id": "chunk-text",
+      "name": "Chunk Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://embeddings:80/embed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.text }) }}",
+        "options": {}
+      },
+      "id": "embed-chunk",
+      "name": "Generate Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 200]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://qdrant:6333/collections/documents/points",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: [{ id: $crypto.randomUUID(), vector: $json[0], payload: { text: $('Chunk Text').item.json.text, index: $('Chunk Text').item.json.index } }] }) }}",
+        "options": {}
+      },
+      "id": "store-qdrant",
+      "name": "Store in Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, chunks_stored: $runIndex + 1 }) }}",
+        "options": {}
+      },
+      "id": "respond-upload",
+      "name": "Upload Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ask",
+        "options": {}
+      },
+      "id": "webhook-ask",
+      "name": "Ask Question",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://embeddings:80/embed",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.question }) }}",
+        "options": {}
+      },
+      "id": "embed-question",
+      "name": "Embed Question",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://qdrant:6333/collections/documents/points/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vector: $json[0], limit: 3, with_payload: true }) }}",
+        "options": {}
+      },
+      "id": "search-qdrant",
+      "name": "Search Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 450]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Build context from search results\nconst results = $input.first().json.result || [];\nconst context = results.map(r => r.payload.text).join('\\n\\n---\\n\\n');\nconst question = $('Ask Question').first().json.question;\n\nreturn [{\n  json: {\n    context,\n    question,\n    sources: results.map(r => ({ text: r.payload.text.slice(0, 100) + '...', score: r.score }))\n  }\n}];"
+      },
+      "id": "build-context",
+      "name": "Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://vllm:8000/v1/chat/completions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'Qwen/Qwen2.5-32B-Instruct-AWQ', messages: [{ role: 'system', content: 'Answer questions based on the provided context. If the answer is not in the context, say so. Be concise.' }, { role: 'user', content: 'Context:\\n' + $json.context + '\\n\\nQuestion: ' + $json.question }], max_tokens: 512, temperature: 0.3 }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "generate-answer",
+      "name": "Generate Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 450]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ answer: $json.choices[0].message.content, sources: $('Build Context').first().json.sources }) }}",
+        "options": {}
+      },
+      "id": "respond-answer",
+      "name": "Answer Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1350, 450]
+    }
+  ],
+  "connections": {
+    "Upload Document": {
+      "main": [[{ "node": "Chunk Text", "type": "main", "index": 0 }]]
+    },
+    "Chunk Text": {
+      "main": [[{ "node": "Generate Embedding", "type": "main", "index": 0 }]]
+    },
+    "Generate Embedding": {
+      "main": [[{ "node": "Store in Qdrant", "type": "main", "index": 0 }]]
+    },
+    "Store in Qdrant": {
+      "main": [[{ "node": "Upload Response", "type": "main", "index": 0 }]]
+    },
+    "Ask Question": {
+      "main": [[{ "node": "Embed Question", "type": "main", "index": 0 }]]
+    },
+    "Embed Question": {
+      "main": [[{ "node": "Search Qdrant", "type": "main", "index": 0 }]]
+    },
+    "Search Qdrant": {
+      "main": [[{ "node": "Build Context", "type": "main", "index": 0 }]]
+    },
+    "Build Context": {
+      "main": [[{ "node": "Generate Answer", "type": "main", "index": 0 }]]
+    },
+    "Generate Answer": {
+      "main": [[{ "node": "Answer Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": [],
+  "pinData": {}
+}

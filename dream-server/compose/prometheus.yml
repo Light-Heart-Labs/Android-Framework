@@ -1,0 +1,28 @@
+# Prometheus Configuration — Dream Server Cluster
+# Scrapes metrics from vLLM, Whisper, and system
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # vLLM metrics
+  - job_name: 'vllm'
+    static_configs:
+      - targets: ['vllm:8000']
+    metrics_path: /metrics
+
+  # Node exporter (if installed on host)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+
+  # NVIDIA GPU metrics (dcgm-exporter)
+  - job_name: 'gpu'
+    static_configs:
+      - targets: ['host.docker.internal:9400']
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

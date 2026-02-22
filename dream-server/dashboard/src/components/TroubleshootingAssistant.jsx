@@ -1,0 +1,270 @@
+import { useState } from 'react'
+import { AlertCircle, ChevronDown, ChevronUp, Terminal, Copy, Check } from 'lucide-react'
+
+const commonIssues = [
+  {
+    id: 'port-conflict',
+    title: 'Port already in use',
+    symptoms: ['Error: port 3000 already in use', 'Cannot start service on port X'],
+    cause: 'Another program is using the required port',
+    solutions: [
+      {
+        title: 'Find and stop the conflicting service',
+        command: 'lsof -i :3000  # Replace 3000 with your port',
+        description: 'Shows which process is using the port'
+      },
+      {
+        title: 'Use different ports',
+        command: '# Edit .env file\nWEBUI_PORT=3005\nDASHBOARD_PORT=3006',
+        description: 'Change ports in .env and restart'
+      }
+    ]
+  },
+  {
+    id: 'gpu-not-detected',
+    title: 'GPU not detected',
+    symptoms: ['No GPU detected', 'CPU-only mode active', 'Slow inference'],
+    cause: 'NVIDIA drivers or Container Toolkit not installed',
+    solutions: [
+      {
+        title: 'Install NVIDIA Container Toolkit',
+        command: '# Ubuntu/Debian\ncurl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg\n\n# Then restart Docker\nsudo systemctl restart docker',
+        description: 'Required for GPU access in containers'
+      },
+      {
+        title: 'Verify GPU is visible',
+        command: 'nvidia-smi && docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi',
+        description: 'Should show your GPU in both outputs'
+      }
+    ]
+  },
+  {
+    id: 'model-loading',
+    title: 'Model loading slowly or failing',
+    symptoms: ['Connection error in Open WebUI', 'vLLM unhealthy', 'Chat not responding'],
+    cause: 'Model download incomplete or VRAM exhausted',
+    solutions: [
+      {
+        title: 'Check model download progress',
+        command: 'ls -lh ~/dream-server/models/',
+        description: 'Verify model files exist and have size > 1GB'
+      },
+      {
+        title: 'Check VRAM usage',
+        command: 'nvidia-smi | head -20',
+        description: 'Look for processes using GPU memory'
+      },
+      {
+        title: 'Use smaller model tier',
+        command: '# Edit .env\nGPU_TIER=minimal  # Uses Qwen 1.5B instead of 32B',
+        description: 'For GPUs with <16GB VRAM'
+      }
+    ]
+  },
+  {
+    id: 'voice-not-working',
+    title: 'Voice chat not working',
+    symptoms: ['Cannot connect to voice', 'Microphone not detected', 'No audio output'],
+    cause: 'LiveKit not started or browser permissions blocked',
+    solutions: [
+      {
+        title: 'Start voice services',
+        command: 'cd ~/dream-server && docker compose --profile livekit --profile voice up -d',
+        description: 'LiveKit and voice agent must be running'
+      },
+      {
+        title: 'Check browser permissions',
+        command: '# In browser:\n# 1. Click lock icon in address bar\n# 2. Allow microphone access\n# 3. Refresh page',
+        description: 'Browsers block mic by default'
+      }
+    ]
+  },
+  {
+    id: 'docker-not-running',
+    title: 'Docker not running or accessible',
+    symptoms: ['Cannot connect to Docker daemon', 'docker: command not found', 'Permission denied'],
+    cause: 'Docker service stopped or user not in docker group',
+    solutions: [
+      {
+        title: 'Start Docker service',
+        command: 'sudo systemctl start docker',
+        description: 'Start the Docker daemon'
+      },
+      {
+        title: 'Add user to docker group',
+        command: 'sudo usermod -aG docker $USER && newgrp docker',
+        description: 'Required for non-root Docker access'
+      }
+    ]
+  }
+]
+
+export function TroubleshootingAssistant({ serviceStatus }) {
+  const [expanded, setExpanded] = useState(null)
+  const [copied, setCopied] = useState(null)
+  const [search, setSearch] = useState('')
+
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text)
+    setCopied(id)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const filteredIssues = search 
+    ? commonIssues.filter(i => 
+        i.title.toLowerCase().includes(search.toLowerCase()) ||
+        i.symptoms.some(s => s.toLowerCase().includes(search.toLowerCase()))
+      )
+    : commonIssues
+
+  // Auto-expand issues matching current service errors
+  const unhealthyServices = serviceStatus?.services?.filter(s => s.status !== 'healthy') || []
+  const relevantIssues = commonIssues.filter(issue => {
+    if (issue.id === 'gpu-not-detected' && unhealthyServices.some(s => s.name.includes('vLLM'))) return true
+    if (issue.id === 'voice-not-working' && unhealthyServices.some(s => s.name.includes('LiveKit'))) return true
+    if (issue.id === 'model-loading' && unhealthyServices.some(s => s.name.includes('vLLM'))) return true
+    return false
+  })
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <AlertCircle className="w-5 h-5 text-amber-400" />
+        <h3 className="text-sm font-medium text-zinc-200">Troubleshooting Assistant</h3>
+      </div>
+
+      {/* Search */}
+      <input
+        type="text"
+        placeholder="Search issues..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+      />
+
+      {/* Relevant issues first */}
+      {relevantIssues.length > 0 && !search && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+          <p className="text-xs text-amber-300 font-medium mb-2">Detected potential issues:</p>
+          <div className="space-y-1">
+            {relevantIssues.map(issue => (
+              <button
+                key={issue.id}
+                onClick={() => setExpanded(expanded === issue.id ? null : issue.id)}
+                className="w-full text-left text-sm text-amber-200 hover:text-amber-100 flex items-center gap-2"
+              >
+                <ChevronDown className="w-3 h-3" />
+                {issue.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Issue List */}
+      <div className="space-y-2">
+        {filteredIssues.map((issue) => (
+          <div
+            key={issue.id}
+            className={`border rounded-lg overflow-hidden transition-all ${
+              expanded === issue.id 
+                ? 'border-zinc-600 bg-zinc-800/50' 
+                : 'border-zinc-800 hover:border-zinc-700'
+            }`}
+          >
+            <button
+              onClick={() => setExpanded(expanded === issue.id ? null : issue.id)}
+              className="w-full flex items-center justify-between p-3 text-left"
+            >
+              <div>
+                <span className="text-sm font-medium text-zinc-200">{issue.title}</span>
+                {relevantIssues.includes(issue) && (
+                  <span className="ml-2 text-xs text-amber-400">(may be relevant)</span>
+                )}
+              </div>
+              {expanded === issue.id ? (
+                <ChevronUp className="w-4 h-4 text-zinc-500" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-zinc-500" />
+              )}
+            </button>
+
+            {expanded === issue.id && (
+              <div className="px-3 pb-3 space-y-3">
+                {/* Symptoms */}
+                <div>
+                  <p className="text-xs text-zinc-500 mb-1">Symptoms:</p>
+                  <ul className="space-y-0.5">
+                    {issue.symptoms.map((symptom, i) => (
+                      <li key={i} className="text-xs text-zinc-400 flex items-center gap-1">
+                        <span className="text-zinc-600">•</span> {symptom}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Cause */}
+                <div>
+                  <p className="text-xs text-zinc-500 mb-1">Likely cause:</p>
+                  <p className="text-xs text-zinc-400">{issue.cause}</p>
+                </div>
+
+                {/* Solutions */}
+                <div className="space-y-2">
+                  <p className="text-xs text-zinc-500">Solutions:</p>
+                  {issue.solutions.map((solution, i) => (
+                    <div key={i} className="bg-zinc-900/50 rounded p-2">
+                      <p className="text-xs font-medium text-zinc-300 mb-1">{solution.title}</p>
+                      <p className="text-xs text-zinc-500 mb-2">{solution.description}</p>
+                      
+                      {solution.command && (
+                        <div className="relative">
+                          <pre className="bg-zinc-950 p-2 rounded text-xs text-zinc-400 overflow-x-auto font-mono">
+                            {solution.command}
+                          </pre>
+                          <button
+                            onClick={() => copyToClipboard(solution.command, `${issue.id}-${i}`)}
+                            className="absolute top-1 right-1 p-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+                          >
+                            {copied === `${issue.id}-${i}` ? (
+                              <Check className="w-3 h-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {filteredIssues.length === 0 && (
+        <p className="text-sm text-zinc-500 text-center py-4">
+          No issues found matching "{search}"
+        </p>
+      )}
+
+      {/* Help footer */}
+      <div className="pt-3 border-t border-zinc-800">
+        <p className="text-xs text-zinc-500">
+          Still stuck? Check the{' '}
+          <a 
+            href="https://github.com/Light-Heart-Labs/Lighthouse-AI/tree/main/dream-server#troubleshooting" 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-400 hover:text-indigo-300"
+          >
+            full troubleshooting guide
+          </a>
+          {' '}or run{' '}
+          <code className="bg-zinc-800 px-1 py-0.5 rounded text-zinc-400">./scripts/dream-test.sh</code>
+        </p>
+      </div>
+    </div>
+  )
+}

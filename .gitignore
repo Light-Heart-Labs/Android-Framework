@@ -41,3 +41,22 @@ secrets/
 token-spy/data/
 token-spy/*.db
 token-spy/*.sqlite
+
+# ============================================
+# Dream Server runtime/build artifacts
+# ============================================
+dream-server/.env
+dream-server/.env.*
+!dream-server/.env.example
+dream-server/data/
+dream-server/models/
+dream-server/config/openclaw/workspace/
+dream-server/dashboard/node_modules/
+dream-server/dashboard/dist/
+dream-server/preflight-*.log
+dream-server/.current-mode
+dream-server/.profiles
+dream-server/.claude/
+dream-server/.pytest_cache/
+dream-server/tests/__pycache__/
+dream-server/internal/

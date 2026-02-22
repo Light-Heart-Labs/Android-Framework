@@ -1,0 +1,297 @@
+# Dream Server - CLOUD MODE
+# Full cloud model access with local services
+# Uses cloud APIs for LLM when local is unavailable/slow
+#
+# Features:
+#   - LiteLLM gateway with cloud model access
+#   - Local voice services (Whisper, Kokoro)
+#   - Cloud LLM fallback enabled
+#
+# Usage: dream mode cloud
+# Or:    docker compose -f docker-compose.cloud.yml up -d
+
+services:
+  # ============================================
+  # LiteLLM - Multi-model Gateway (Cloud-enabled)
+  # ============================================
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.81.3-stable
+    container_name: dream-litellm-cloud
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_KEY:?LITELLM_KEY must be set in .env}
+      # Cloud API keys
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+    volumes:
+      - ./config/litellm/cloud-config.yaml:/app/config.yaml:ro
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    command: --config /app/config.yaml
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ============================================
+  # Chat UI
+  # ============================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.7.2
+    container_name: dream-webui-cloud
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - OLLAMA_BASE_URL=
+      - OPENAI_API_BASE_URL=http://litellm:4000/v1
+      - OPENAI_API_KEY=${LITELLM_KEY:-}
+      - WEBUI_AUTH=${WEBUI_AUTH:-true}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET:?Set WEBUI_SECRET in .env}
+      - ENABLE_RAG_WEB_SEARCH=${ENABLE_WEB_SEARCH:-true}
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Speech-to-Text (Local)
+  # ============================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:v1.4.1
+    container_name: dream-whisper-cloud
+    restart: unless-stopped
+    runtime: nvidia
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - ASR_MODEL=${WHISPER_MODEL:-base}
+      - ASR_ENGINE=faster_whisper
+    volumes:
+      - ./data/whisper:/root/.cache
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - default
+      - voice
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Text-to-Speech (Local Kokoro)
+  # ============================================
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi:v0.6.2-gpu
+    container_name: dream-tts-cloud
+    restart: unless-stopped
+    runtime: nvidia
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - DEFAULT_VOICE=af_heart
+    ports:
+      - "${TTS_PORT:-8880}:8880"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - default
+      - voice
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Vector Database (RAG)
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:v1.16.3
+    container_name: dream-qdrant-cloud
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    profiles:
+      - rag
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================
+  # Text Embeddings (Local)
+  # ============================================
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    container_name: dream-embeddings-cloud
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - MODEL_ID=${EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
+    volumes:
+      - ./data/embeddings:/data
+    ports:
+      - "${EMBEDDINGS_PORT:-8090}:80"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    profiles:
+      - rag
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Dashboard
+  # ============================================
+  dashboard-api:
+    build:
+      context: ./dashboard-api
+      dockerfile: Dockerfile
+    container_name: dream-dashboard-api-cloud
+    restart: unless-stopped
+    networks:
+      - dream-network
+    ports:
+      - "${DASHBOARD_API_PORT:-3002}:3002"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - DREAM_INSTALL_DIR=/dream-server
+      - DREAM_DATA_DIR=/data
+      - DREAM_MODE=cloud
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_HOST=livekit
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-}
+      - KOKORO_URL=${KOKORO_URL:-http://tts:8880}
+      - SERVICE_HOST=${SERVICE_HOST:-litellm}
+      - DASHBOARD_API_KEY=${DASHBOARD_API_KEY}
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+      - ./scripts:/scripts:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dream-dashboard-cloud
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${DASHBOARD_PORT:-3001}:3001"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    depends_on:
+      - dashboard-api
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  dream-network:
+    name: dream-network
+
+# CLOUD MODE NOTES:
+# - LiteLLM gateway provides access to cloud models
+# - Voice services remain local (faster, cheaper)
+# - Requires API keys in .env: ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
+# - Web search enabled by default

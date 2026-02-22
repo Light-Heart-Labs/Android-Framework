@@ -1,0 +1,125 @@
+{
+  "$schema": "https://raw.githubusercontent.com/openclaw/openclaw/main/schemas/openclaw.json",
+  "version": "1.0",
+  "metadata": {
+    "name": "M1 Zero-Cloud Sandbox",
+    "description": "OpenClaw test instance with zero-cloud (local-only) configuration",
+    "mode": "local",
+    "created": "2026-02-15"
+  },
+  "gateway": {
+    "mode": "local"
+  },
+  "agent": {
+    "name": "M1 Test Agent",
+    "model": "local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ",
+    "systemPrompt": "You are a test agent running in zero-cloud local mode. Use local tools only. Be helpful, accurate, and avoid external APIs.",
+    "max_tokens": 4096,
+    "temperature": 0.7,
+    "top_p": 0.9
+  },
+  "providers": {
+    "local-vllm": {
+      "type": "openai-compatible",
+      "baseUrl": "http://localhost:8000/v1",
+      "apiKey": "not-needed",
+      "timeout": 120,
+      "maxRetries": 3,
+      "models": {
+        "Qwen/Qwen2.5-32B-Instruct-AWQ": {
+          "contextWindow": 4096,
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "maxConcurrency": 8
+        }
+      }
+    }
+  },
+  "subagent": {
+    "enabled": true,
+    "model": "local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ",
+    "maxConcurrent": 4,
+    "timeoutSeconds": 180,
+    "retryAttempts": 2,
+    "rateLimit": "10/minute"
+  },
+  "tools": {
+    "exec": {
+      "enabled": true,
+      "allowedCommands": [
+        "ls", "cat", "grep", "find", "head", "tail", "wc", "pwd", "du", "df",
+        "ps", "top", "free", "uptime", "date", "cal", "whoami", "hostname",
+        "curl", "wget"
+      ],
+      "maxExecutionTime": 60,
+      "allowedPaths": ["/home/node", "/tmp", "/config", "/workspace"],
+      "blockedCommands": ["rm", "sudo", "su", "ssh", "chmod", "chown"]
+    },
+    "read": {
+      "enabled": true,
+      "maxFileSize": "10MB",
+      "allowedExtensions": [".txt", ".md", ".json", ".yaml", ".yml", ".log", ".py", ".sh"],
+      "blockedPaths": ["/etc", "/proc", "/sys"]
+    },
+    "write": {
+      "enabled": true,
+      "maxFileSize": "1MB",
+      "allowedDirectories": ["/home/node", "/tmp", "/workspace"],
+      "blockedPaths": ["/etc", "/usr", "/bin", "/sbin", "/proc", "/sys"]
+    },
+    "web_fetch": {
+      "enabled": false,
+      "note": "Disabled in zero-cloud mode"
+    },
+    "web_search": {
+      "enabled": false,
+      "note": "Disabled in zero-cloud mode"
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "provider": "local",
+    "maxEntries": 1000,
+    "ttlSeconds": 3600,
+    "storagePath": "/home/node/.openclaw/memory"
+  },
+  "gateway": {
+    "port": 18789,
+    "host": "0.0.0.0",
+    "cors": {
+      "enabled": true,
+      "origins": ["http://localhost:3000", "http://127.0.0.1:3000"]
+    },
+    "rateLimit": {
+      "enabled": true,
+      "requestsPerMinute": 60,
+      "burst": 10
+    },
+    "authentication": {
+      "enabled": true,
+      "secret": "${OPENCLAW_GATEWAY_TOKEN:-dev-token}"
+    }
+  },
+  "offline": {
+    "enabled": true,
+    "localServices": {
+      "vllm": "http://localhost:8000",
+      "whisper": "http://localhost:9000",
+      "tts": "http://localhost:8880",
+      "searxng": "http://localhost:8001"
+    }
+  },
+  "health": {
+    "enabled": true,
+    "interval": 30,
+    "timeout": 10,
+    "checks": [
+      {
+        "name": "vllm-health",
+        "type": "http",
+        "url": "http://localhost:8000/health",
+        "expectedStatus": 200
+      }
+    ]
+  }
+}

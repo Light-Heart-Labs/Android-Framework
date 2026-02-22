@@ -1,0 +1,55 @@
+# LiteLLM Cloud Mode Configuration
+# Full cloud model access
+
+model_list:
+  # Claude (Anthropic)
+  - model_name: claude-sonnet
+    litellm_params:
+      model: claude-sonnet-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      description: "Claude Sonnet 4.5 - Best for coding and analysis"
+
+  - model_name: claude-opus
+    litellm_params:
+      model: claude-opus-4
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      description: "Claude Opus 4 - Most capable, best reasoning"
+
+  # OpenAI
+  - model_name: gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      description: "GPT-4o - Fast and capable"
+
+  - model_name: gpt-4-turbo
+    litellm_params:
+      model: gpt-4-turbo-preview
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      description: "GPT-4 Turbo - Latest GPT-4"
+
+  # Together AI (open source models)
+  - model_name: llama-3.1-70b
+    litellm_params:
+      model: together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo
+      api_key: os.environ/TOGETHER_API_KEY
+    model_info:
+      description: "Llama 3.1 70B - Open source powerhouse"
+
+  - model_name: qwen-72b
+    litellm_params:
+      model: together_ai/Qwen/Qwen2.5-72B-Instruct-Turbo
+      api_key: os.environ/TOGETHER_API_KEY
+    model_info:
+      description: "Qwen 2.5 72B - Excellent for coding"
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+  
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,0 +1,211 @@
+{
+  "name": "M4 Deterministic Voice Agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "m4-voice-agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// M4 Deterministic Voice Router\n// Routes requests based on intent classification\n\nconst text = $input.first().json.text || '';\nconst sessionId = $input.first().json.session_id || 'default';\n\n// Simple keyword-based intent classification (matches agent_m4.py)\nconst intents = {\n  'schedule_service': ['book', 'schedule', 'appointment', 'service', 'fix', 'repair'],\n  'emergency': ['urgent', 'emergency', 'broken', 'not working', 'leaking'],\n  'ask_hours': ['hours', 'open', 'when', 'time', 'available'],\n  'ask_price': ['price', 'cost', 'how much', 'quote', 'estimate'],\n  'confirm': ['yes', 'yeah', 'sure', 'ok', 'okay', 'confirm'],\n  'cancel': ['no', 'cancel', 'nevermind', 'stop', 'end']\n};\n\nfunction classifyIntent(text) {\n  const textLower = text.toLowerCase();\n  let bestIntent = 'unknown';\n  let bestScore = 0;\n  \n  for (const [intent, keywords] of Object.entries(intents)) {\n    const matches = keywords.filter(kw => textLower.includes(kw)).length;\n    if (matches > 0) {\n      const score = matches / keywords.length;\n      if (score > bestScore) {\n        bestScore = score;\n          bestIntent = intent;\n    }\n  }\n  }\n  \n  return { intent: bestIntent, confidence: bestScore };\n}\n\nconst result = classifyIntent(text);\nconst THRESHOLD = 0.85;\n\nreturn [{\n  json: {\n    text: text,\n    session_id: sessionId,\n    intent: result.intent,\n    confidence: result.confidence,\n    deterministic: result.confidence >= THRESHOLD,\n    threshold: THRESHOLD\n  }\n}];"
+      },
+      "id": "classify",
+      "name": "Classify Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-deterministic",
+              "leftValue": "={{ $json.deterministic }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "decision",
+      "name": "Deterministic?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// FSM Executor for HVAC domain\n// Maps intents to deterministic responses\n\nconst data = $input.first().json;\nconst intent = data.intent;\nconst sessionId = data.session_id;\n\n// Simple FSM state tracking (in production, use Redis/DB)\nconst responses = {\n  'schedule_service': 'I\'d be happy to help you schedule a service appointment. What type of service do you need? We offer HVAC repair, maintenance, and installation.',\n  'emergency': 'I understand this is urgent. For emergencies, please call our 24/7 hotline at (555) 123-4567. If this is a safety issue like a gas leak, please evacuate and call 911.',\n  'ask_hours': 'We\'re open Monday through Friday from 8 AM to 6 PM, and Saturdays from 9 AM to 2 PM. We\'re closed on Sundays. Would you like to schedule a visit?',\n  'ask_price': 'Our service call fee is $89, which includes diagnosis. Repairs are quoted upfront with no surprises. Maintenance plans start at $199/year. Would you like a specific quote?',\n  'confirm': 'Perfect! I\'ve noted that. Is there anything else I can help you with today?',\n  'cancel': 'No problem at all. Feel free to reach out anytime if you need assistance. Have a great day!',\n  'unknown': 'I\'m not sure I understood. Could you rephrase that? You can ask about scheduling service, our hours, or pricing.'\n};\n\nconst responseText = responses[intent] || responses['unknown'];\n\nreturn [{\n  json: {\n    ...data,\n    response: responseText,\n    routing: 'deterministic',\n    latency_ms: 15  // Simulated - deterministic is fast!\n  }\n}];"
+      },
+      "id": "fsm",
+      "name": "FSM Executor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.VLLM_URL || 'http://localhost:8000' }}/v1/chat/completions",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a helpful HVAC service assistant. Keep responses conversational and concise. The user said: {{ $json.text }}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.text }}"
+            }
+          ],
+          "max_tokens": 150,
+          "temperature": 0.7
+        },
+        "options": {}
+      },
+      "id": "llm",
+      "name": "LLM Fallback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine both paths\nconst deterministic = $input.all()[0];\nconst fallback = $input.all()[1] || null;\n\nlet result;\nif (deterministic.json.routing === 'deterministic') {\n  result = deterministic.json;\n} else {\n  // Parse LLM response\n  const llmResponse = fallback?.json?.choices?.[0]?.message?.content || 'I\'m not sure how to help with that.';\n  result = {\n    ...deterministic.json,\n    response: llmResponse,\n    routing: 'llm_fallback',\n    latency_ms: fallback?.json?.usage ? 500 : 0\n  };\n}\n\nreturn [{ json: result }];"
+      },
+      "id": "combine",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($input.first().json) }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log metrics for analysis\nconst data = $input.first().json;\n\nconsole.log('M4 Voice Agent Request:', {\n  session_id: data.session_id,\n  intent: data.intent,\n  confidence: data.confidence,\n  routing: data.routing,\n  latency_ms: data.latency_ms,\n  deterministic_rate: data.routing === 'deterministic' ? 1 : 0\n});\n\nreturn $input.all();"
+      },
+      "id": "metrics",
+      "name": "Log Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Classify Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Intent": {
+      "main": [
+        [
+          {
+            "node": "Deterministic?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deterministic?": {
+      "main": [
+        [
+          {
+            "node": "FSM Executor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "LLM Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FSM Executor": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Fallback": {
+      "main": [
+        [
+          {
+            "node": "Combine Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Results": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsCaller"
+  },
+  "staticData": null,
+  "tags": ["m4", "voice", "deterministic", "featured"]
+}

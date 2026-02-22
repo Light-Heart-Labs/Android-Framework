@@ -1,0 +1,31 @@
+{
+  "version": "3.0.0",
+  "release_date": "2026-03-01",
+  "min_version": "2.5.0",
+  "breaking_changes": true,
+  "changelog": [
+    "NEW: Multi-user support with role-based access",
+    "NEW: Built-in SSL certificate management",
+    "CHANGED: Database schema for chat history (requires migration)",
+    "CHANGED: Environment variable names (see migration guide)",
+    "REMOVED: Legacy config format support"
+  ],
+  "docker_images": {
+    "open-webui": "ghcr.io/open-webui/open-webui:1.0.0",
+    "n8n": "docker.n8n.io/n8nio/n8n:2.0.0",
+    "qdrant": "qdrant/qdrant:v2.0.0",
+    "openclaw": "openclaw/openclaw:v3.0.0",
+    "postgres": "postgres:16-alpine"
+  },
+  "config_files": [
+    "config/litellm/config.yaml",
+    "config/openclaw/openclaw.json",
+    "config/nginx/ssl.conf"
+  ],
+  "migrations": [
+    "migrate-v2-to-v3-database.sh",
+    "migrate-v2-to-v3-env.sh"
+  ],
+  "migration_notes": "This is a MAJOR update with breaking changes. Please review the migration guide before updating.",
+  "pre_update_warning": "You must be on version 2.5.0 or higher before updating to 3.0.0"
+}

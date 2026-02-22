@@ -1,0 +1,484 @@
+{
+  "name": "Document Q&A - Upload & Ask",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "doc/upload",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-upload",
+      "name": "Upload Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 200],
+      "notes": "POST { text: '...', doc_id: 'optional', title: 'optional' }"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://qdrant:6333/collections/documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vectors: { size: 768, distance: 'Cosine' } }) }}",
+        "options": {
+          "ignore400Errors": true
+        }
+      },
+      "id": "create-collection",
+      "name": "Ensure Collection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 200],
+      "notes": "Creates Qdrant collection if not exists (768 dims for BGE-base)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split text into overlapping chunks for better retrieval\nconst text = $input.item.json.body.text || '';\nconst docId = $input.item.json.body.doc_id || 'doc_' + Date.now();\nconst title = $input.item.json.body.title || 'Untitled';\n\nconst chunkSize = 500;\nconst overlap = 100;\nconst chunks = [];\n\nif (!text || text.trim().length < 10) {\n  throw new Error('Text content is required and must be at least 10 characters');\n}\n\n// Clean and normalize text\nconst cleanText = text.replace(/\\s+/g, ' ').trim();\n\nfor (let i = 0; i < cleanText.length; i += chunkSize - overlap) {\n  const chunk = cleanText.slice(i, i + chunkSize);\n  if (chunk.trim().length > 30) {\n    chunks.push({\n      text: chunk.trim(),\n      chunk_index: chunks.length,\n      start_char: i,\n      end_char: i + chunk.length,\n      doc_id: docId,\n      title: title,\n      timestamp: new Date().toISOString()\n    });\n  }\n}\n\nif (chunks.length === 0) {\n  throw new Error('No valid chunks could be created from the text');\n}\n\nreturn chunks.map(c => ({ json: c }));"
+      },
+      "id": "chunk-text",
+      "name": "Chunk Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://embeddings:80/embed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.text }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "generate-embedding",
+      "name": "Generate Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200],
+      "notes": "Uses TEI with BGE-base-en-v1.5 (768 dimensions)"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://qdrant:6333/collections/documents/points",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: [{ id: Math.floor(Date.now() * 1000 + Math.random() * 1000), vector: $json[0], payload: { text: $('Chunk Text').item.json.text, doc_id: $('Chunk Text').item.json.doc_id, title: $('Chunk Text').item.json.title, chunk_index: $('Chunk Text').item.json.chunk_index, timestamp: $('Chunk Text').item.json.timestamp } }] }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "store-qdrant",
+      "name": "Store in Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate storage results\nconst items = $input.all();\nconst firstChunk = $('Chunk Text').first().json;\nreturn [{\n  json: {\n    success: true,\n    doc_id: firstChunk.doc_id,\n    title: firstChunk.title,\n    chunks_indexed: items.length,\n    message: `Successfully indexed ${items.length} chunks from document '${firstChunk.title}'`\n  }\n}];"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-upload",
+      "name": "Return Upload Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "doc/ask",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-ask",
+      "name": "Ask Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 500],
+      "notes": "POST { question: '...', doc_id: 'optional filter' }"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://embeddings:80/embed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: $json.body.question }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "embed-question",
+      "name": "Embed Question",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://qdrant:6333/collections/documents/points/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vector: $json[0], limit: 5, with_payload: true, filter: $('Ask Endpoint').item.json.body.doc_id ? { must: [{ key: 'doc_id', match: { value: $('Ask Endpoint').item.json.body.doc_id } }] } : undefined }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "search-qdrant",
+      "name": "Search Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build context from retrieved chunks with source attribution\nconst results = $input.item.json.result || [];\nconst question = $('Ask Endpoint').item.json.body.question;\n\nif (results.length === 0) {\n  return [{\n    json: {\n      context: '',\n      question: question,\n      sources: [],\n      has_context: false\n    }\n  }];\n}\n\nconst sources = [];\nconst contextParts = results.map((r, idx) => {\n  const payload = r.payload || {};\n  sources.push({\n    doc_id: payload.doc_id,\n    title: payload.title || 'Unknown',\n    chunk_index: payload.chunk_index,\n    score: r.score\n  });\n  return `[Source ${idx + 1}: ${payload.title || payload.doc_id}]\\n${payload.text}`;\n});\n\nreturn [{\n  json: {\n    context: contextParts.join('\\n\\n---\\n\\n'),\n    question: question,\n    sources: sources,\n    has_context: true\n  }\n}];"
+      },
+      "id": "build-context",
+      "name": "Build Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://vllm:8000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'Qwen/Qwen2.5-32B-Instruct-AWQ', messages: [{ role: 'system', content: 'You are a knowledgeable assistant that answers questions based on the provided document context. Always cite which source(s) you used. If the context does not contain relevant information, clearly state that.' }, { role: 'user', content: $json.has_context ? 'Based on the following document excerpts:\\n\\n' + $json.context + '\\n\\n---\\n\\nQuestion: ' + $json.question : 'No relevant documents found for this question: ' + $json.question }], temperature: 0.3, max_tokens: 1024, stream: false }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "generate-answer",
+      "name": "Generate Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { question: $('Build Context').item.json.question, answer: $json.choices[0].message.content, sources: $('Build Context').item.json.sources, context_found: $('Build Context').item.json.has_context } }}",
+        "options": {}
+      },
+      "id": "respond-answer",
+      "name": "Return Answer",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "doc/list",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-list",
+      "name": "List Docs Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 750],
+      "notes": "GET /webhook/doc/list - List all indexed documents"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://qdrant:6333/collections/documents/points/scroll",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: 1000, with_payload: { include: ['doc_id', 'title', 'timestamp'] } }) }}",
+        "options": {}
+      },
+      "id": "scroll-qdrant",
+      "name": "Get All Points",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 750]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deduplicate and list unique documents\nconst points = $input.item.json.result?.points || [];\nconst docs = new Map();\n\npoints.forEach(p => {\n  const docId = p.payload?.doc_id;\n  if (docId && !docs.has(docId)) {\n    docs.set(docId, {\n      doc_id: docId,\n      title: p.payload?.title || 'Untitled',\n      indexed_at: p.payload?.timestamp\n    });\n  }\n});\n\nreturn [{\n  json: {\n    documents: Array.from(docs.values()),\n    total_documents: docs.size,\n    total_chunks: points.length\n  }\n}];"
+      },
+      "id": "list-docs",
+      "name": "List Documents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 750]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-list",
+      "name": "Return List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 750]
+    }
+  ],
+  "connections": {
+    "Upload Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Ensure Collection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Collection": {
+      "main": [
+        [
+          {
+            "node": "Chunk Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Text": {
+      "main": [
+        [
+          {
+            "node": "Generate Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embedding": {
+      "main": [
+        [
+          {
+            "node": "Store in Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Qdrant": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Return Upload Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Embed Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Question": {
+      "main": [
+        [
+          {
+            "node": "Search Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Qdrant": {
+      "main": [
+        [
+          {
+            "node": "Build Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context": {
+      "main": [
+        [
+          {
+            "node": "Generate Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Answer": {
+      "main": [
+        [
+          {
+            "node": "Return Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Docs Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Get All Points",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Points": {
+      "main": [
+        [
+          {
+            "node": "List Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Documents": {
+      "main": [
+        [
+          {
+            "node": "Return List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dream-server"
+  },
+  "tags": [
+    {
+      "name": "dream-server",
+      "id": "1"
+    },
+    {
+      "name": "rag",
+      "id": "5"
+    },
+    {
+      "name": "documents",
+      "id": "10"
+    }
+  ]
+}

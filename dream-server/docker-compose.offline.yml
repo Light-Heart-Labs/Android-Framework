@@ -1,0 +1,552 @@
+# Dream Server - OFFLINE MODE Configuration
+# Zero cloud dependencies - 100% local services
+# Based on M1 audit findings - removes all cloud API dependencies
+
+services:
+  # ============================================
+  # LLM Inference - Local vLLM (Primary)
+  # ============================================
+  vllm:
+    image: vllm/vllm-openai:v0.15.1
+    container_name: dream-vllm-offline
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${GPU_DEVICES:-all}
+      - HF_TOKEN=${HF_TOKEN:-}
+      # OFFLINE MODE: Disable HuggingFace online features
+      - HF_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - HF_DATASETS_OFFLINE=1
+    volumes:
+      - ./models:/root/.cache/huggingface
+      - ./data/vllm:/data
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+    command: >
+      --model ${LLM_MODEL:-Qwen/Qwen2.5-32B-Instruct-AWQ}
+      ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-8192}
+      --gpu-memory-utilization ${GPU_UTIL:-0.9}
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      # OFFLINE MODE: Disable model downloads
+      --disable-log-requests
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 32G
+        reservations:
+          cpus: '2.0'
+          memory: 8G
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ============================================
+  # Ollama - Local CPU-only fallback
+  # ============================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dream-ollama-offline
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=/models
+      # OFFLINE MODE: Disable update checks
+      - OLLAMA_NOHISTORY=1
+      - OLLAMA_NOPRUNE=1
+    volumes:
+      - ./data/ollama:/models
+      - ./config/ollama:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:11434/api/tags', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Chat UI - Open WebUI (Cloud-free)
+  # ============================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.7.2
+    container_name: dream-webui-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # OFFLINE MODE: Disable all cloud services
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_BASE_URL=http://vllm:8000/v1
+      - OPENAI_API_KEY=not-needed
+      - WEBUI_AUTH=${WEBUI_AUTH:-true}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET:?Set WEBUI_SECRET in .env}
+      # OFFLINE MODE: Disable web search and external integrations
+      - ENABLE_RAG_WEB_SEARCH=false
+      - ENABLE_RAG_HYBRID_SEARCH=false
+      - ENABLE_WEB_SEARCH=false
+      - ENABLE_GOOGLE_DRIVE=false
+      - ENABLE_GITHUB=false
+      - ENABLE_GITLAB=false
+      - ENABLE_OLLAMA_API=false
+      # Use local models only
+      - DEFAULT_MODELS=vllm:Qwen/Qwen2.5-32B-Instruct-AWQ,ollama:qwen2.5:32b
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    depends_on:
+      vllm:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Speech-to-Text - Whisper (Local)
+  # ============================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:v1.4.1
+    container_name: dream-whisper-offline
+    restart: unless-stopped
+    runtime: nvidia
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # OFFLINE MODE: Pre-downloaded models only
+      - ASR_MODEL=${WHISPER_MODEL:-base}
+      - ASR_ENGINE=faster_whisper
+      # Disable model auto-download
+      - HF_OFFLINE=1
+    volumes:
+      - ./data/whisper:/root/.cache
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - default
+      - voice
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Text-to-Speech - Kokoro (Local)
+  # ============================================
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi:v0.6.2-gpu
+    container_name: dream-tts-offline
+    restart: unless-stopped
+    runtime: nvidia
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - DEFAULT_VOICE=af_heart
+      # OFFLINE MODE: Pre-downloaded voices only
+      - HF_OFFLINE=1
+    ports:
+      - "${TTS_PORT:-8880}:8880"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - default
+      - voice
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Text Embeddings (RAG)
+  # ============================================
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    container_name: dream-embeddings-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - MODEL_ID=${EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
+      # OFFLINE MODE: Disable model downloads
+      - HF_OFFLINE=1
+    volumes:
+      - ./data/embeddings:/data
+    ports:
+      - "${EMBEDDINGS_PORT:-8090}:80"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    profiles:
+      - rag
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:80/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Vector Database (RAG)
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:v1.16.3
+    container_name: dream-qdrant-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    profiles:
+      - rag
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6333/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================
+  # LiteLLM - Local API Gateway (Cloud-free)
+  # ============================================
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.81.3-stable
+    container_name: dream-litellm-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_KEY:?LITELLM_KEY must be set in .env}
+      # OFFLINE MODE: Disable cloud provider health checks
+      - LITELLM_LOCALONLY=true
+    volumes:
+      - ./config/litellm/offline-config.yaml:/app/config.yaml:ro
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    command: --config /app/config.yaml
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    profiles:
+      - multi-model
+      - offline
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ============================================
+  # Workflow Automation - n8n (Local)
+  # ============================================
+  n8n:
+    image: n8nio/n8n:2.6.4
+    container_name: dream-n8n-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_AUTH:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASS:?Set N8N_PASS in .env}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678}
+      - GENERIC_TIMEZONE=${TIMEZONE:-America/New_York}
+      # OFFLINE MODE: Disable external integrations
+      - N8N_DISABLE_EXTERNAL_HOOKS=true
+      - N8N_DISABLE_EXTERNAL_FRONTEND_HOOKS=true
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+      - ./config/n8n:/home/node/workflows
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    profiles:
+      - workflows
+      - offline
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5678/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # LiveKit Voice (Real-time WebRTC)
+  # ============================================
+  livekit:
+    build:
+      context: ./config/livekit
+      dockerfile: Dockerfile
+    image: dream-livekit:local
+    container_name: dream-livekit-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set in .env}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set in .env}
+    volumes:
+      - ./config/livekit/offline-livekit.yaml:/etc/livekit.yaml.template:ro
+    ports:
+      - "${LIVEKIT_PORT:-7880}:7880"      # HTTP/WebSocket
+      - "${LIVEKIT_RTC_PORT:-7881}:7881"  # RTC (UDP)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    profiles:
+      - default
+      - livekit
+      - offline
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:7880/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================
+  # LiveKit Voice Agent (Local models only)
+  # ============================================
+  livekit-voice-agent:
+    build:
+      context: ./agents/voice-offline
+      dockerfile: Dockerfile
+    container_name: dream-voice-agent-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+      # OFFLINE MODE: Use only local services
+      - LLM_URL=${LLM_URL:-http://vllm:8000/v1}
+      - LLM_MODEL=${LLM_MODEL:-Qwen/Qwen2.5-32B-Instruct-AWQ}
+      - STT_URL=http://whisper:9000/v1
+      - TTS_URL=http://tts:8880/v1
+      - DETERMINISTIC_ENABLED=${DETERMINISTIC_ENABLED:-true}
+      - DETERMINISTIC_THRESHOLD=${DETERMINISTIC_THRESHOLD:-0.85}
+      - FLOWS_DIR=/app/flows
+      # OFFLINE MODE: Disable cloud features
+      - DISABLE_CLOUD_FEATURES=true
+      - OFFLINE_MODE=true
+    volumes:
+      - ./agents/voice-offline/flows:/app/flows:ro
+    depends_on:
+      livekit:
+        condition: service_healthy
+      vllm:
+        condition: service_healthy
+      whisper:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    profiles:
+      - default
+      - livekit
+      - offline
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # OpenClaw Agent Framework (Offline)
+  # ============================================
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:v0.5.0
+    container_name: dream-openclaw-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - OPENCLAW_CONFIG=/config/openclaw-offline.json
+      - OPENCLAW_DATA=/data
+      # OFFLINE MODE: Disable cloud features
+      - OFFLINE_MODE=true
+      - DISABLE_CLOUD_MODELS=true
+    volumes:
+      - ./config/openclaw:/config:ro
+      - ./data/openclaw:/data
+    ports:
+      - "${OPENCLAW_PORT:-7860}:7860"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    depends_on:
+      vllm:
+        condition: service_healthy
+    profiles:
+      - openclaw
+      - offline
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Privacy Shield - API PII Protection (Local)
+  # ============================================
+  privacy-shield:
+    build:
+      context: ./privacy-shield-offline
+      dockerfile: Dockerfile
+    container_name: dream-privacy-shield-offline
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # OFFLINE MODE: Only proxy to local services
+      - TARGET_API_URL=${TARGET_API_URL:-http://vllm:8000/v1}
+      - TARGET_API_KEY=${TARGET_API_KEY:-not-needed}
+      - SHIELD_PORT=${SHIELD_PORT:-8085}
+      - PII_CACHE_ENABLED=${PII_CACHE_ENABLED:-true}
+      - PII_CACHE_SIZE=${PII_CACHE_SIZE:-1000}
+      - PII_CACHE_TTL=${PII_CACHE_TTL:-300}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # OFFLINE MODE: Disable cloud API patterns
+      - OFFLINE_MODE=true
+      - DISABLE_CLOUD_PATTERN_RECOGNITION=true
+    volumes:
+      - ./data/privacy-shield:/data
+    ports:
+      - "${SHIELD_PORT:-8085}:8085"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    profiles:
+      - privacy
+      - offline
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8085/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    name: dream-network-offline
+
+# OFFLINE MODE NOTES:
+# - All cloud API dependencies removed
+# - Local services only: vLLM, Ollama, Whisper, Kokoro TTS, Embeddings
+# - Pre-downloaded models required (see docs/M1-DREAM-SERVER-OFFLINE-MODE.md)
+# - Environment variables set to local endpoints only
+# - Disabled: web search, cloud storage, external integrations

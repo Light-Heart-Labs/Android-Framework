@@ -1,0 +1,39 @@
+port: 7880
+rtc:
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: true
+  tcp_port: 7881
+  udp_port: 7882
+
+# Production keys — set via LIVEKIT_API_KEY and LIVEKIT_API_SECRET environment variables
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+logging:
+  level: info
+  json: true
+
+# Limits for cluster tier
+limit:
+  num_tracks: 100
+  bytes_per_sec: 100000000  # 100 MB/s total
+  subscription_limit_video: 50
+  subscription_limit_audio: 100
+
+# Room settings
+room:
+  auto_create: true
+  empty_timeout: 300    # 5 min
+  max_participants: 50  # per room
+  
+# Turn server (use external TURN for production)
+# turn:
+#   enabled: true
+#   domain: turn.example.com
+#   tls_port: 443
+
+# Webhook for analytics (optional)
+# webhook:
+#   urls:
+#     - https://your-webhook-endpoint.com/livekit

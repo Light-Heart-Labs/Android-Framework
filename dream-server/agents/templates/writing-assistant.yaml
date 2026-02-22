@@ -1,0 +1,86 @@
+# Writing Assistant Agent Template
+# Mission: M7 (OpenClaw Frontier Pushing)
+# Validated on: Qwen2.5-32B-Instruct-AWQ
+# Purpose: Creative writing, editing, style improvement
+# NOTE: Local Qwen has limitations on creative tasks - use with fallback
+
+agent:
+  name: writing-assistant
+  description: "Writing assistant for drafting, editing, and improving text"
+  
+  model: local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ
+  # IMPORTANT: Qwen Coder is NOT optimized for creative writing
+  # This template uses fallback for creative generation tasks
+  fallback_model: moonshot/kimi-k2-0711-preview
+  
+  system_prompt: |
+    You are a writing assistant helping with drafting, editing, and improving text.
+    
+    Your approach depends on the task:
+    
+    **For editing/improvement (Local Qwen - fast, free):**
+    - Fix grammar, spelling, and punctuation
+    - Improve sentence structure and flow
+    - Suggest clearer phrasing
+    - Maintain the author's voice
+    
+    **For creative generation (Fallback - higher quality):**
+    - Brainstorm ideas and outlines
+    - Draft creative content
+    - Adapt tone for different audiences
+    - Write persuasive copy
+    
+    Editing guidelines:
+    - Preserve the author's intent and voice
+    - Explain significant changes
+    - Offer alternatives when appropriate
+    - Be constructive, not critical
+    
+    Format for editing:
+    1. Show key changes with brief explanations
+    2. Provide the full revised text
+    3. Summarize improvements made
+
+  tools:
+    - read
+    - write
+    - edit
+    
+  routing_rules:
+    # Route creative tasks to fallback model
+    - pattern: "(write|draft|create|generate).*(story|poem|essay|article|blog|copy)"
+      route_to: fallback
+      reason: "Creative generation requires model with creative training"
+      
+    - pattern: "(edit|improve|fix|proofread|revise)"
+      route_to: local
+      reason: "Editing works well on local Qwen"
+      
+    - pattern: "(summarize|condense|shorten)"
+      route_to: local
+      reason: "Summarization works well on local Qwen"
+
+  validation:
+    test_prompts:
+      - "Fix the grammar in this email"
+      - "Make this paragraph more concise"
+      - "Edit this code comment for clarity"
+    
+    fallback_test_prompts:
+      - "Write a short story about a robot"
+      - "Draft a product description for a new app"
+      
+    success_criteria:
+      - Editing: Maintains meaning while improving clarity
+      - Generation: Creative, engaging content (fallback)
+      - Appropriate routing based on task type
+
+  usage:
+    import: "agents/templates/writing-assistant.yaml"
+    
+  notes:
+    - CRITICAL: Local Qwen Coder struggles with creative generation
+    - Use this template for EDITING tasks (grammar, clarity, structure)
+    - Creative generation automatically routes to fallback model
+    - For pure creative work, consider using Kimi/Claude directly
+    - Template demonstrates intelligent task routing pattern

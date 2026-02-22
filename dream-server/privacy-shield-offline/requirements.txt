@@ -1,0 +1,6 @@
+fastapi>=0.100.0
+httpx>=0.24.0
+uvicorn>=0.23.0
+cachetools>=5.0.0
+# OFFLINE MODE: No external dependencies
+# Using local regex-based PII detection instead of Presidio cloud models

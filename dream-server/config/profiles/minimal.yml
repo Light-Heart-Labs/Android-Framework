@@ -1,0 +1,31 @@
+# Dream Server - Minimal Tier Profile
+# Target: GTX 1080 Ti, RTX 3080, etc. (<20GB VRAM)
+# Optimized for: Qwen2.5-7B with basic functionality
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    command: >
+      --model Qwen/Qwen2.5-7B-Instruct-AWQ
+      --port 8000
+      --gpu-memory-utilization 0.90
+      --max-model-len 8192
+      --enable-chunked-prefill
+      --max-num-batched-tokens 2048
+      --quantization awq
+      --dtype auto
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s

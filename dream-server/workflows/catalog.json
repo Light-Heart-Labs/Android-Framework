@@ -1,0 +1,177 @@
+{
+  "workflows": [
+    {
+      "id": "m4-deterministic-voice",
+      "file": "08-m4-deterministic-voice.json",
+      "name": "M4 Deterministic Voice",
+      "description": "Intent classification with deterministic routing — 60% faster, 80% less LLM usage",
+      "icon": "Brain",
+      "category": "voice",
+      "dependencies": ["vllm"],
+      "diagram": {
+        "steps": [
+          {"label": "User speaks", "icon": "Mic"},
+          {"label": "Classify intent", "icon": "Brain"},
+          {"label": "Route: FSM or LLM", "icon": "GitBranch"},
+          {"label": "Fast response", "icon": "Zap"}
+        ]
+      },
+      "setupTime": "2 minutes",
+      "featured": true
+    },
+    {
+      "id": "document-qa",
+      "file": "document-qa.json",
+      "name": "Document Q&A",
+      "description": "Upload documents and ask questions about them",
+      "icon": "FileText",
+      "category": "productivity",
+      "dependencies": ["qdrant", "vllm"],
+      "diagram": {
+        "steps": [
+          {"label": "Upload document", "icon": "Upload"},
+          {"label": "AI chunks & embeds", "icon": "Brain"},
+          {"label": "Ask questions", "icon": "MessageSquare"},
+          {"label": "AI finds answers", "icon": "Search"}
+        ]
+      },
+      "setupTime": "2 minutes",
+      "featured": true
+    },
+    {
+      "id": "voice-transcription",
+      "file": "03-voice-transcription.json",
+      "name": "Voice Transcription",
+      "description": "Transcribe audio files to text",
+      "icon": "Mic",
+      "category": "voice",
+      "dependencies": ["whisper"],
+      "diagram": {
+        "steps": [
+          {"label": "Upload audio", "icon": "Upload"},
+          {"label": "Whisper transcribes", "icon": "AudioLines"},
+          {"label": "Get text", "icon": "FileText"}
+        ]
+      },
+      "setupTime": "1 minute",
+      "featured": false
+    },
+    {
+      "id": "voice-to-voice",
+      "file": "05-voice-to-voice.json",
+      "name": "Voice to Voice",
+      "description": "Speak, get AI response as audio",
+      "icon": "Headphones",
+      "category": "voice",
+      "dependencies": ["whisper", "vllm", "kokoro"],
+      "diagram": {
+        "steps": [
+          {"label": "Speak", "icon": "Mic"},
+          {"label": "Whisper transcribes", "icon": "AudioLines"},
+          {"label": "AI responds", "icon": "Brain"},
+          {"label": "Kokoro speaks", "icon": "Volume2"}
+        ]
+      },
+      "setupTime": "2 minutes",
+      "featured": true
+    },
+    {
+      "id": "daily-digest",
+      "file": "daily-digest.json",
+      "name": "Daily Digest",
+      "description": "Summarize your day every morning",
+      "icon": "Calendar",
+      "category": "productivity",
+      "dependencies": ["vllm"],
+      "diagram": {
+        "steps": [
+          {"label": "Scheduled trigger", "icon": "Clock"},
+          {"label": "Gather data", "icon": "Database"},
+          {"label": "AI summarizes", "icon": "Brain"},
+          {"label": "Send digest", "icon": "Mail"}
+        ]
+      },
+      "setupTime": "5 minutes",
+      "featured": false
+    },
+    {
+      "id": "code-assistant",
+      "file": "07-code-assistant.json",
+      "name": "Code Assistant",
+      "description": "AI-powered coding help via API",
+      "icon": "Code",
+      "category": "development",
+      "dependencies": ["vllm"],
+      "diagram": {
+        "steps": [
+          {"label": "Send code", "icon": "Code"},
+          {"label": "AI analyzes", "icon": "Brain"},
+          {"label": "Get suggestions", "icon": "Lightbulb"}
+        ]
+      },
+      "setupTime": "1 minute",
+      "featured": false
+    },
+    {
+      "id": "rag-demo",
+      "file": "06-rag-demo.json",
+      "name": "RAG Demo",
+      "description": "Retrieval-augmented generation example",
+      "icon": "Search",
+      "category": "development",
+      "dependencies": ["qdrant", "vllm"],
+      "diagram": {
+        "steps": [
+          {"label": "Query", "icon": "Search"},
+          {"label": "Find relevant docs", "icon": "Database"},
+          {"label": "AI synthesizes", "icon": "Brain"},
+          {"label": "Grounded answer", "icon": "CheckCircle"}
+        ]
+      },
+      "setupTime": "3 minutes",
+      "featured": false
+    },
+    {
+      "id": "voice-memo",
+      "file": "voice-memo.json",
+      "name": "Voice Memo",
+      "description": "Record and transcribe voice memos",
+      "icon": "Mic",
+      "category": "productivity",
+      "dependencies": ["whisper"],
+      "diagram": {
+        "steps": [
+          {"label": "Record memo", "icon": "Mic"},
+          {"label": "Upload", "icon": "Upload"},
+          {"label": "Transcribe", "icon": "AudioLines"},
+          {"label": "Save text", "icon": "Save"}
+        ]
+      },
+      "setupTime": "1 minute",
+      "featured": false
+    },
+    {
+      "id": "chat-endpoint",
+      "file": "01-chat-endpoint.json",
+      "name": "Chat API Endpoint",
+      "description": "REST API for chat completions",
+      "icon": "MessageSquare",
+      "category": "development",
+      "dependencies": ["vllm"],
+      "diagram": {
+        "steps": [
+          {"label": "POST request", "icon": "Send"},
+          {"label": "AI processes", "icon": "Brain"},
+          {"label": "JSON response", "icon": "FileJson"}
+        ]
+      },
+      "setupTime": "1 minute",
+      "featured": false
+    }
+  ],
+  "categories": {
+    "productivity": {"name": "Productivity", "description": "Automate your daily tasks"},
+    "voice": {"name": "Voice", "description": "Speech-to-text and text-to-speech"},
+    "development": {"name": "Development", "description": "APIs and coding tools"}
+  }
+}

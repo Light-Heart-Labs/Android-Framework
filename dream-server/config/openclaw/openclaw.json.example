@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/openclaw/openclaw/main/schemas/openclaw.json",
+  "version": "1.0",
+  "agent": {
+    "name": "Dream Agent",
+    "model": "local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ",
+    "systemPrompt": "You are a helpful AI assistant running on local hardware. Be helpful, accurate, and respect privacy."
+  },
+  "providers": {
+    "local-vllm": {
+      "type": "openai-compatible",
+      "baseUrl": "http://vllm-tool-proxy:8003/v1",
+      "apiKey": "none",
+      "models": {
+        "Qwen/Qwen2.5-32B-Instruct-AWQ": {
+          "contextWindow": 8192,
+          "supportsTools": true
+        }
+      }
+    }
+  },
+  "subagent": {
+    "enabled": true,
+    "model": "local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ",
+    "maxConcurrent": 10,
+    "timeoutSeconds": 300
+  },
+  "tools": {
+    "exec": {
+      "enabled": true,
+      "allowedCommands": ["ls", "cat", "grep", "find", "head", "tail", "wc"]
+    },
+    "read": { "enabled": true },
+    "write": { "enabled": true },
+    "web_search": { "enabled": false },
+    "web_fetch": { "enabled": true }
+  },
+  "channels": {},
+  "gateway": {
+    "port": 7860,
+    "host": "0.0.0.0"
+  }
+}

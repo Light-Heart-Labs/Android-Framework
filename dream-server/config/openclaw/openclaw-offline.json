@@ -1,0 +1,155 @@
+{
+  "$schema": "https://raw.githubusercontent.com/openclaw/openclaw/main/schemas/openclaw.json",
+  "version": "1.0",
+  "metadata": {
+    "name": "Dream Server Offline",
+    "description": "Zero-cloud mode configuration for local-only operation",
+    "mode": "offline",
+    "created": "2026-02-12"
+  },
+  "agent": {
+    "name": "Dream Agent Offline",
+    "model": "local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ",
+    "systemPrompt": "You are Dream Agent running in offline mode on local hardware. You have access to local tools and services only. Be helpful, accurate, and maintain privacy by not attempting to access external services.",
+    "max_tokens": 4096,
+    "temperature": 0.7,
+    "top_p": 0.9
+  },
+  "providers": {
+    "local-vllm": {
+      "type": "openai-compatible",
+      "baseUrl": "http://vllm-tool-proxy:8003/v1",
+      "apiKey": "not-needed",
+      "timeout": 120,
+      "maxRetries": 3,
+      "models": {
+        "Qwen/Qwen2.5-32B-Instruct-AWQ": {
+          "contextWindow": 4096,
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "maxConcurrency": 8
+        }
+      }
+    },
+    "local-ollama": {
+      "type": "openai-compatible",
+      "baseUrl": "http://ollama:11434/v1",
+      "apiKey": "not-needed",
+      "timeout": 60,
+      "maxRetries": 2,
+      "models": {
+        "qwen2.5:7b": {
+          "contextWindow": 4096,
+          "supportsTools": false,
+          "supportsStreaming": true,
+          "maxConcurrency": 4
+        }
+      }
+    }
+  },
+  "subagent": {
+    "enabled": true,
+    "model": "local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ",
+    "maxConcurrent": 4,
+    "timeoutSeconds": 180,
+    "retryAttempts": 2,
+    "rateLimit": "10/minute"
+  },
+  "tools": {
+    "exec": {
+      "enabled": true,
+      "allowedCommands": [
+        "ls", "cat", "grep", "find", "head", "tail", "wc", "pwd", "du", "df",
+        "ps", "top", "free", "uptime", "date", "cal", "whoami", "hostname"
+      ],
+      "maxExecutionTime": 30,
+      "allowedPaths": ["/data", "/config", "/tmp"],
+      "blockedCommands": ["rm", "sudo", "su", "wget", "curl", "ping", "ssh"]
+    },
+    "read": {
+      "enabled": true,
+      "maxFileSize": "10MB",
+      "allowedExtensions": [".txt", ".md", ".json", ".yaml", ".yml", ".log", ".py", ".sh"],
+      "blockedPaths": ["/etc", "/proc", "/sys"]
+    },
+    "write": {
+      "enabled": true,
+      "maxFileSize": "1MB",
+      "allowedDirectories": ["/data", "/tmp"],
+      "blockedPaths": ["/etc", "/usr", "/bin", "/sbin", "/proc", "/sys"]
+    },
+    "web_fetch": {
+      "enabled": false,
+      "note": "Disabled in offline mode - no external web access"
+    },
+    "web_search": {
+      "enabled": false,
+      "note": "Disabled in offline mode - no web search"
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "provider": "local",
+    "maxEntries": 1000,
+    "ttlSeconds": 3600,
+    "storagePath": "/data/memory"
+  },
+  "gateway": {
+    "port": 7860,
+    "host": "0.0.0.0",
+    "cors": {
+      "enabled": true,
+      "origins": ["http://localhost:3000", "http://localhost:8080"]
+    },
+    "rateLimit": {
+      "enabled": true,
+      "requestsPerMinute": 60,
+      "burst": 10
+    },
+    "authentication": {
+      "enabled": false,
+      "note": "Disabled for local development - rely on network security"
+    }
+  },
+  "offline": {
+    "enabled": true,
+    "localServices": {
+      "vllm": "http://vllm:8000",
+      "ollama": "http://ollama:11434",
+      "whisper": "http://whisper:9000",
+      "tts": "http://tts:8880",
+      "embeddings": "http://embeddings:80"
+    },
+    "cloudDependencies": {
+      "disabled": [
+        "openai",
+        "anthropic",
+        "google",
+        "azure",
+        "aws",
+        "huggingface",
+        "web_search",
+        "external_apis"
+      ]
+    }
+  },
+  "health": {
+    "enabled": true,
+    "interval": 30,
+    "timeout": 10,
+    "checks": [
+      {
+        "name": "vllm-health",
+        "type": "http",
+        "url": "http://vllm:8000/health",
+        "expectedStatus": 200
+      },
+      {
+        "name": "ollama-health",
+        "type": "http",
+        "url": "http://ollama:11434/api/tags",
+        "expectedStatus": 200
+      }
+    ]
+  }
+}

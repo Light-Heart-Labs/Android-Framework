@@ -1,0 +1,68 @@
+{
+  "name": "hvac_service",
+  "initial_state": "S1_greeting",
+  "states": {
+    "S1_greeting": {
+      "say": "welcome_message",
+      "expect": ["schedule_service", "ask_hours", "emergency"],
+      "next": {
+        "schedule_service": "S2_gather_info",
+        "ask_hours": "S1_hours_response",
+        "emergency": "S1_emergency_redirect"
+      }
+    },
+    "S2_gather_info": {
+      "say": "ask_name",
+      "capture": {"customer_name": "name"},
+      "expect": ["provide_name", "ask_skip"],
+      "next": {
+        "provide_name": "S3_confirm",
+        "ask_skip": "S3_confirm_no_name"
+      }
+    },
+    "S3_confirm": {
+      "say": "confirm_appointment",
+      "expect": ["confirm", "reschedule", "cancel"],
+      "next": {
+        "confirm": "S4_complete",
+        "reschedule": "S2_gather_info",
+        "cancel": "S4_cancelled"
+      }
+    },
+    "S3_confirm_no_name": {
+      "say": "confirm_appointment_no_name",
+      "expect": ["confirm", "reschedule", "cancel"],
+      "next": {
+        "confirm": "S4_complete",
+        "reschedule": "S2_gather_info",
+        "cancel": "S4_cancelled"
+      }
+    },
+    "S4_complete": {
+      "say": "appointment_confirmed",
+      "final": true
+    },
+    "S4_cancelled": {
+      "say": "appointment_cancelled",
+      "final": true
+    },
+    "S1_hours_response": {
+      "say": "business_hours",
+      "final": true
+    },
+    "S1_emergency_redirect": {
+      "say": "emergency_transfer",
+      "final": true
+    }
+  },
+  "templates": {
+    "welcome_message": "Hello! Thank you for calling Grace HVAC. I can help you schedule service, check hours, or connect you with emergency support. How can I help you today?",
+    "ask_name": "May I have your name to get started?",
+    "confirm_appointment": "Great, {customer_name}. I've scheduled your appointment. A technician will arrive within the 2-hour window. Does this work for you?",
+    "confirm_appointment_no_name": "I've scheduled your appointment. A technician will arrive within the 2-hour window. Does this work for you?",
+    "appointment_confirmed": "You're all set! We'll see you soon. Is there anything else I can help with?",
+    "appointment_cancelled": "No problem. Feel free to call back anytime if you need assistance.",
+    "business_hours": "We're open Monday through Friday, 8 AM to 6 PM, and Saturdays from 9 AM to 2 PM. Would you like to schedule a visit?",
+    "emergency_transfer": "I understand this is urgent. Let me transfer you to our emergency line right away. Please hold."
+  }
+}

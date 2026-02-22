@@ -1,0 +1,84 @@
+# Dream Server Voice Agent
+
+Real-time voice AI assistant running entirely on local hardware.
+
+## Architecture
+
+```
+User (WebRTC) → LiveKit Server → Voice Agent
+                                    ↓
+                    ┌───────────────┼───────────────┐
+                    ↓               ↓               ↓
+                Whisper STT    vLLM (LLM)    OpenTTS/Piper
+                (port 9000)    (port 8000)   (port 8880)
+```
+
+## Status
+
+**Current:** ⚠️ Plugin interface WIP
+
+The LiveKit Agents SDK uses a plugin architecture. Our local backends need to implement the correct interfaces:
+
+| Component | Local Service | Status |
+|-----------|---------------|--------|
+| LLM | vLLM (OpenAI-compatible) | ✅ Works via `livekit-plugins-openai` |
+| STT | Whisper | 🟡 Needs OpenAI-compatible endpoint or custom plugin |
+| TTS | OpenTTS/Piper | 🟡 Needs custom plugin |
+| VAD | Silero | ✅ Works |
+
+## Requirements
+
+- LiveKit Server running (port 7880)
+- vLLM with OpenAI-compatible API (port 8000)
+- Whisper STT server (port 9000)
+- TTS server (port 8880)
+
+## Environment Variables
+
+```bash
+LIVEKIT_URL=ws://localhost:7880
+LIVEKIT_API_KEY=devkey
+LIVEKIT_API_SECRET=secret
+LLM_URL=http://vllm:8000/v1
+LLM_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
+STT_URL=http://whisper:9000
+TTS_URL=http://tts:8880
+```
+
+## Running
+
+```bash
+# Development mode
+python agent.py dev
+
+# Console mode (terminal only)
+python agent.py console
+
+# Production mode
+python agent.py start
+```
+
+## TODO for Full Integration
+
+1. **STT Plugin**: Either:
+   - Use `faster-whisper-server` which has OpenAI-compatible API
+   - Create custom LiveKit plugin for Whisper HTTP API
+   
+2. **TTS Plugin**: Create custom plugin for OpenTTS/Piper HTTP API
+
+3. **Testing**: Integration test with all local services
+
+## Bootstrap Mode
+
+When using a small model (1.5B, 3B), the agent automatically:
+- Uses shorter system prompt
+- Limits response length
+- Faster but less capable
+
+This allows immediate voice interaction while the full model downloads.
+
+## References
+
+- [LiveKit Agents Docs](https://docs.livekit.io/agents/)
+- [LiveKit Plugins](https://docs.livekit.io/agents/models/#plugins)
+- [Dream Server Roadmap](../docs/TECHNICAL-ROADMAP.md)

@@ -1,0 +1,31 @@
+# Dream Server - Pro Tier Profile
+# Target: RTX 6000, A100, etc. (48GB+ VRAM)
+# Optimized for: Full FP16 models, long context, multi-GPU
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    command: >
+      --model Qwen/Qwen2.5-32B-Instruct
+      --port 8000
+      --gpu-memory-utilization 0.85
+      --max-model-len 32768
+      --enable-chunked-prefill
+      --max-num-batched-tokens 16384
+      --dtype bfloat16
+      --tensor-parallel-size 1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 240s

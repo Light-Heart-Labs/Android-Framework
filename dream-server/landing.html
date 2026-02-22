@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dream Server — Your Own ChatGPT in 10 Minutes</title>
+    <meta name="description" content="Buy hardware, run one command, have your own ChatGPT running locally. Voice agents, RAG, workflows included. Stop paying per token.">
+    <style>
+        :root {
+            --primary: #7c3aed;
+            --primary-dark: #6d28d9;
+            --secondary: #10b981;
+            --bg: #0f0f1a;
+            --card: #1a1a2e;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #f59e0b;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+        
+        /* Hero */
+        .hero {
+            padding: 6rem 0 4rem;
+            text-align: center;
+            background: linear-gradient(180deg, #1a1a2e 0%, var(--bg) 100%);
+        }
+        
+        .badge {
+            display: inline-block;
+            background: rgba(124, 58, 237, 0.2);
+            color: var(--primary);
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(124, 58, 237, 0.3);
+        }
+        
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff, #a5b4fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            line-height: 1.1;
+        }
+        
+        @media (max-width: 768px) { h1 { font-size: 2.25rem; } }
+        
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--muted);
+            max-width: 600px;
+            margin: 0 auto 2rem;
+        }
+        
+        .hero-cta {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
+        
+        .btn-secondary {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid #334155;
+        }
+        
+        .btn-secondary:hover { border-color: var(--primary); }
+        
+        /* Code block */
+        .install-box {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 3rem auto;
+            max-width: 600px;
+            text-align: left;
+        }
+        
+        .install-box pre {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 1rem;
+            color: #58a6ff;
+            overflow-x: auto;
+        }
+        
+        .install-box .comment {
+            color: #8b949e;
+        }
+        
+        /* Features */
+        .features {
+            padding: 4rem 0;
+        }
+        
+        .features h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 3rem;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .feature-card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid #30363d;
+        }
+        
+        .feature-card .icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .feature-card h3 {
+            margin-bottom: 0.5rem;
+        }
+        
+        .feature-card p {
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+        
+        /* Problem/Solution */
+        .problem-solution {
+            padding: 4rem 0;
+        }
+        
+        .ps-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        
+        @media (max-width: 768px) { .ps-grid { grid-template-columns: 1fr; } }
+        
+        .ps-card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 2rem;
+            border: 1px solid #30363d;
+        }
+        
+        .ps-card.problem { border-color: #f87171; }
+        .ps-card.solution { border-color: var(--secondary); }
+        
+        .ps-card h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .ps-card ul {
+            list-style: none;
+            color: var(--muted);
+        }
+        
+        .ps-card li {
+            padding: 0.5rem 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        
+        /* Hardware */
+        .hardware {
+            padding: 4rem 0;
+            background: var(--card);
+        }
+        
+        .hardware h2 {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        .hardware > p {
+            text-align: center;
+            color: var(--muted);
+            margin-bottom: 2rem;
+        }
+        
+        .tier-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+        }
+        
+        .tier-card {
+            background: var(--bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            border: 1px solid #30363d;
+        }
+        
+        .tier-card.recommended {
+            border-color: var(--primary);
+            position: relative;
+        }
+        
+        .tier-card.recommended::before {
+            content: 'Most Popular';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .tier-card h4 { margin-bottom: 0.5rem; }
+        
+        .tier-card .price {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        
+        .tier-card .specs {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        
+        /* CTA */
+        .cta-section {
+            padding: 4rem 0;
+            text-align: center;
+        }
+        
+        .cta-section h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .cta-section p {
+            color: var(--muted);
+            margin-bottom: 2rem;
+        }
+        
+        .email-capture {
+            display: flex;
+            gap: 0.5rem;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .email-capture input {
+            flex: 1;
+            padding: 1rem;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            background: var(--card);
+            color: var(--text);
+            font-size: 1rem;
+        }
+        
+        /* Footer */
+        footer {
+            padding: 2rem 0;
+            border-top: 1px solid #30363d;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.875rem;
+        }
+        
+        footer a { color: var(--primary); }
+    </style>
+</head>
+<body>
+    <section class="hero">
+        <div class="container">
+            <span class="badge">🚀 Now Available</span>
+            <h1>Your Own ChatGPT.<br>Running Locally.<br>In 10 Minutes.</h1>
+            <p>Dream Server is a turnkey local AI stack. Buy hardware, run one command, and you have voice agents, RAG, and workflows running on your own machine. Stop paying per token.</p>
+            
+            <div class="hero-cta">
+                <a href="#install" class="btn btn-primary">Get Started Free</a>
+                <a href="#hardware" class="btn btn-secondary">Hardware Guide</a>
+            </div>
+            
+            <div class="install-box" id="install">
+                <pre><span class="comment"># Clone and install (requires GPU)</span>
+git clone https://github.com/Light-Heart-Labs/Lighthouse-AI.git
+cd Lighthouse-AI/dream-server
+./install.sh</pre>
+            </div>
+        </div>
+    </section>
+    
+    <section class="problem-solution">
+        <div class="container">
+            <div class="ps-grid">
+                <div class="ps-card problem">
+                    <h3>❌ The Problem</h3>
+                    <ul>
+                        <li>💸 Paying $0.01-0.06 per 1K tokens, forever</li>
+                        <li>🔒 Your data leaving your network to OpenAI</li>
+                        <li>🚫 Rate limits killing your batch jobs</li>
+                        <li>⏰ API outages at the worst times</li>
+                        <li>🏢 Vendor lock-in to one provider</li>
+                    </ul>
+                </div>
+                <div class="ps-card solution">
+                    <h3>✅ The Solution</h3>
+                    <ul>
+                        <li>💰 One-time hardware cost, unlimited inference</li>
+                        <li>🏠 Everything runs on your machine</li>
+                        <li>⚡ No limits — run as many requests as your GPU handles</li>
+                        <li>🔄 No dependencies on external services</li>
+                        <li>🔓 Open models you can customize</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="features">
+        <div class="container">
+            <h2>Everything You Need, Out of the Box</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">🧠</div>
+                    <h3>Fast LLM Inference</h3>
+                    <p>vLLM serving Qwen 32B — comparable to GPT-4 on most tasks. 40+ tokens/second on consumer hardware.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">💬</div>
+                    <h3>Beautiful Chat UI</h3>
+                    <p>Open WebUI provides a familiar ChatGPT-like interface. Multi-user support included.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🎙️</div>
+                    <h3>Voice Input/Output</h3>
+                    <p>Whisper for transcription, Piper for text-to-speech. Build voice agents that run locally.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔍</div>
+                    <h3>RAG Pipeline</h3>
+                    <p>Qdrant vector database + embeddings. Ask questions about your documents.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⚙️</div>
+                    <h3>Workflow Automation</h3>
+                    <p>n8n for building automations. 4 starter workflows included (daily digest, doc Q&A, voice memo).</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🤖</div>
+                    <h3>Agent Framework</h3>
+                    <p>Optional OpenClaw integration for autonomous agents that can use tools and browse the web.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="hardware" id="hardware">
+        <div class="container">
+            <h2>Hardware Recommendations</h2>
+            <p>Dream Server auto-detects your hardware and configures appropriately</p>
+            
+            <div class="tier-grid">
+                <div class="tier-card">
+                    <h4>Entry</h4>
+                    <div class="price">~$3,000</div>
+                    <div class="specs">
+                        RTX 4070 (12GB)<br>
+                        7B-14B models<br>
+                        Good for personal use
+                    </div>
+                </div>
+                <div class="tier-card recommended">
+                    <h4>Prosumer</h4>
+                    <div class="price">~$8,000</div>
+                    <div class="specs">
+                        RTX 4090 (24GB)<br>
+                        32B models (quantized)<br>
+                        Great balance of cost/performance
+                    </div>
+                </div>
+                <div class="tier-card">
+                    <h4>Pro</h4>
+                    <div class="price">~$15,000</div>
+                    <div class="specs">
+                        RTX A6000 (48GB)<br>
+                        32B-70B models<br>
+                        For teams and heavy use
+                    </div>
+                </div>
+                <div class="tier-card">
+                    <h4>Enterprise</h4>
+                    <div class="price">~$30,000</div>
+                    <div class="specs">
+                        Dual GPU setup<br>
+                        70B+ models<br>
+                        High concurrency workloads
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="cta-section">
+        <div class="container">
+            <h2>Ready to Own Your AI?</h2>
+            <p>Get notified when we launch on Product Hunt, plus receive our hardware buying guide.</p>
+            
+            <div class="email-capture">
+                <input type="email" placeholder="you@company.com" id="emailInput">
+                <button class="btn btn-primary" id="notifyBtn">Notify Me</button>
+            </div>
+            
+            <p style="margin-top: 2rem; font-size: 0.9rem;">
+                Or <a href="mailto:michael@lightheartlabs.com?subject=Dream Server Inquiry">contact us</a> for a custom setup consultation.
+            </p>
+        </div>
+    </section>
+    
+    <footer>
+        <div class="container">
+            Built by <a href="https://lightheartlabs.com">Lightheart Labs</a> 
+            · <a href="https://github.com/Light-Heart-Labs/Lighthouse-AI">GitHub</a>
+            · <a href="mailto:michael@lightheartlabs.com">Contact</a>
+        </div>
+    </footer>
+    
+    <script>
+        document.getElementById('notifyBtn').addEventListener('click', function() {
+            const email = document.getElementById('emailInput').value;
+            if (!email || !email.includes('@')) {
+                alert('Please enter a valid email.');
+                return;
+            }
+            
+            const subject = encodeURIComponent('Dream Server - Notify Me');
+            const body = encodeURIComponent(`Hi,\n\nPlease notify me when Dream Server launches on Product Hunt.\n\nEmail: ${email}\n\nThanks!`);
+            
+            window.location.href = `mailto:michael@lightheartlabs.com?subject=${subject}&body=${body}`;
+            alert('Thanks! We\'ll notify you when we launch.');
+        });
+    </script>
+</body>
+</html>

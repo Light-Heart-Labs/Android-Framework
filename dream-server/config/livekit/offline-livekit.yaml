@@ -1,0 +1,112 @@
+# LiveKit Offline Configuration
+# Local-only WebRTC setup for Dream Server zero-cloud mode
+# M1 Phase 2 - No external dependencies
+
+port: 7880
+
+# RTC Configuration - Local network only
+rtc:
+  # Port range for WebRTC (ensure these are open on firewall)
+  port_range_start: 50000
+  port_range_end: 60000
+  
+  # OFFLINE MODE: Force local network usage
+  use_external_ip: false
+  
+  # Use container hostname for local networking
+  node_ip: "0.0.0.0"
+  
+  # UDP configuration for local network
+  udp_port: 7882
+  
+  # STUN/TURN servers - DISABLED for offline mode
+  # stun_servers: []
+  # turn_servers: []
+
+# Authentication keys - populated from environment variables
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+  # OFFLINE MODE: No webhook validation needed
+  # webhooks: []
+
+# Logging configuration
+logging:
+  level: info
+  json: false
+  # OFFLINE MODE: Log to stdout only
+  sample: 100
+
+# Room configuration
+room:
+  # Timeout for empty rooms (5 minutes)
+  empty_timeout: 300
+  
+  # Max participants per room
+  max_participants: 10
+  
+  # OFFLINE MODE: Disable external integrations
+  # webhooks: []
+  
+  # Enable recording (local storage only)
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: video/VP8
+    - mime: video/VP9
+    - mime: video/H264
+
+# Node configuration
+node_selector:
+  # OFFLINE MODE: Single node setup
+  kind: any
+  
+# Signal relay configuration
+signal_relay:
+  # OFFLINE MODE: Disabled for local deployment
+  enabled: false
+
+# Limits and security
+limits:
+  # Max bitrate per participant (1.5 Mbps)
+  max_bitrate: 1500000
+  
+  # Max packet size
+  max_packet_size: 1200
+  
+  # OFFLINE MODE: No rate limiting for local use
+  # rate_limit: 100
+
+# Development settings
+debug:
+  # Enable detailed logging for troubleshooting
+  pprof: false
+  
+# Prometheus metrics (optional)
+prometheus:
+  # OFFLINE MODE: Disable metrics export
+  port: 0
+  
+# Key provider configuration
+key_provider:
+  # Use static keys from environment variables
+  kind: static
+  static:
+    keys:
+      ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+# Region configuration - single region for offline
+region:
+  # Local deployment
+  current: "local"
+  regions:
+    - local
+
+# TURN configuration - DISABLED for offline mode
+turn:
+  enabled: false
+  # No external TURN servers
+  
+# Webhooks - DISABLED for offline mode
+webhook:
+  # No external webhooks
+  urls: []
+  api_key: ""

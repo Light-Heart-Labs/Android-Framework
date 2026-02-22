@@ -1,0 +1,436 @@
+{
+  "name": "Voice Memo - Transcribe & Summarize",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-memo",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-memo",
+      "name": "Receive Voice Memo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "notes": "POST multipart/form-data with audio file"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://whisper:9000/asr",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "multipart/form-data"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "audio_file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "output",
+              "value": "json"
+            },
+            {
+              "name": "word_timestamps",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "whisper-transcribe",
+      "name": "Whisper Transcribe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "notes": "Uses faster-whisper for transcription"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and format transcription\nconst result = $input.item.json;\nconst transcript = result.text || '';\nconst segments = result.segments || [];\n\nif (!transcript || transcript.trim().length < 5) {\n  throw new Error('Transcription failed or audio was too short');\n}\n\n// Calculate duration from segments\nlet duration = 0;\nif (segments.length > 0) {\n  duration = segments[segments.length - 1].end || 0;\n}\n\nconst timestamp = new Date().toISOString();\nconst memoId = 'memo_' + Date.now();\n\nreturn [{\n  json: {\n    memo_id: memoId,\n    transcript: transcript.trim(),\n    word_count: transcript.split(/\\s+/).length,\n    duration_seconds: Math.round(duration),\n    segments: segments,\n    timestamp: timestamp\n  }\n}];"
+      },
+      "id": "format-transcript",
+      "name": "Format Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://vllm:8000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'Qwen/Qwen2.5-32B-Instruct-AWQ', messages: [{ role: 'system', content: 'You are an assistant that summarizes voice memos. Create a clear, concise summary that captures:\\n1. Main topic/purpose of the memo\\n2. Key points or action items\\n3. Any important details or decisions mentioned\\n\\nKeep the summary under 150 words. Use bullet points for action items.' }, { role: 'user', content: 'Please summarize this voice memo transcript:\\n\\n' + $json.transcript }], temperature: 0.5, max_tokens: 512, stream: false }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "summarize-llm",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine transcript and summary into final output\nconst transcript = $('Format Transcript').item.json;\nconst summary = $json.choices[0].message.content;\n\nconst dateStr = new Date(transcript.timestamp).toLocaleDateString('en-US', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric',\n  hour: '2-digit',\n  minute: '2-digit'\n});\n\n// Create markdown file content\nconst fileContent = `# Voice Memo\\n\\n**ID:** ${transcript.memo_id}\\n**Date:** ${dateStr}\\n**Duration:** ${transcript.duration_seconds} seconds\\n**Words:** ${transcript.word_count}\\n\\n---\\n\\n## Summary\\n\\n${summary}\\n\\n---\\n\\n## Full Transcript\\n\\n${transcript.transcript}\\n`;\n\nreturn [{\n  json: {\n    memo_id: transcript.memo_id,\n    timestamp: transcript.timestamp,\n    duration_seconds: transcript.duration_seconds,\n    word_count: transcript.word_count,\n    summary: summary,\n    transcript: transcript.transcript,\n    file_content: fileContent\n  }\n}];"
+      },
+      "id": "build-output",
+      "name": "Build Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/memos/{{ $json.memo_id }}.md",
+        "options": {},
+        "dataPropertyName": "file_content"
+      },
+      "id": "save-memo",
+      "name": "Save Memo",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "notes": "Saves to /memos/ folder - configure mount in docker-compose"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, memo_id: $json.memo_id, timestamp: $json.timestamp, duration_seconds: $json.duration_seconds, word_count: $json.word_count, summary: $json.summary, transcript: $json.transcript, saved_to: '/memos/' + $json.memo_id + '.md' } }}",
+        "options": {}
+      },
+      "id": "respond-memo",
+      "name": "Return Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "voice-memos",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-list",
+      "name": "List Memos Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 600],
+      "notes": "GET /webhook/voice-memos - List all saved memos"
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "folderPath": "/memos",
+        "options": {}
+      },
+      "id": "list-files",
+      "name": "List Memo Files",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [460, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse memo files into list\nconst files = $input.all();\nconst memos = files\n  .filter(f => f.json.fileName?.endsWith('.md'))\n  .map(f => ({\n    filename: f.json.fileName,\n    memo_id: f.json.fileName?.replace('.md', ''),\n    size: f.json.size,\n    modified: f.json.mtime\n  }));\n\nreturn [{\n  json: {\n    memos: memos,\n    total: memos.length\n  }\n}];"
+      },
+      "id": "format-list",
+      "name": "Format List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-list",
+      "name": "Return List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-memo-text",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-text",
+      "name": "Text Memo Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 850],
+      "notes": "POST { transcript: '...' } - For pre-transcribed text"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle direct text input (skip Whisper)\nconst transcript = $input.item.json.body.transcript || '';\n\nif (!transcript || transcript.trim().length < 10) {\n  throw new Error('Transcript text is required and must be at least 10 characters');\n}\n\nconst timestamp = new Date().toISOString();\nconst memoId = 'memo_' + Date.now();\n\nreturn [{\n  json: {\n    memo_id: memoId,\n    transcript: transcript.trim(),\n    word_count: transcript.split(/\\s+/).length,\n    duration_seconds: 0,\n    segments: [],\n    timestamp: timestamp\n  }\n}];"
+      },
+      "id": "format-text-input",
+      "name": "Format Text Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 850]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://vllm:8000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'Qwen/Qwen2.5-32B-Instruct-AWQ', messages: [{ role: 'system', content: 'You are an assistant that summarizes voice memos. Create a clear, concise summary that captures:\\n1. Main topic/purpose of the memo\\n2. Key points or action items\\n3. Any important details or decisions mentioned\\n\\nKeep the summary under 150 words. Use bullet points for action items.' }, { role: 'user', content: 'Please summarize this voice memo transcript:\\n\\n' + $json.transcript }], temperature: 0.5, max_tokens: 512, stream: false }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "summarize-text",
+      "name": "Summarize Text",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 850]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine transcript and summary into final output\nconst transcript = $('Format Text Input').item.json;\nconst summary = $json.choices[0].message.content;\n\nconst dateStr = new Date(transcript.timestamp).toLocaleDateString('en-US', {\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric',\n  hour: '2-digit',\n  minute: '2-digit'\n});\n\n// Create markdown file content\nconst fileContent = `# Voice Memo\\n\\n**ID:** ${transcript.memo_id}\\n**Date:** ${dateStr}\\n**Words:** ${transcript.word_count}\\n\\n---\\n\\n## Summary\\n\\n${summary}\\n\\n---\\n\\n## Full Transcript\\n\\n${transcript.transcript}\\n`;\n\nreturn [{\n  json: {\n    memo_id: transcript.memo_id,\n    timestamp: transcript.timestamp,\n    duration_seconds: 0,\n    word_count: transcript.word_count,\n    summary: summary,\n    transcript: transcript.transcript,\n    file_content: fileContent\n  }\n}];"
+      },
+      "id": "build-text-output",
+      "name": "Build Text Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 850]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/memos/{{ $json.memo_id }}.md",
+        "options": {},
+        "dataPropertyName": "file_content"
+      },
+      "id": "save-text-memo",
+      "name": "Save Text Memo",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1120, 800]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, memo_id: $json.memo_id, timestamp: $json.timestamp, word_count: $json.word_count, summary: $json.summary, transcript: $json.transcript, saved_to: '/memos/' + $json.memo_id + '.md' } }}",
+        "options": {}
+      },
+      "id": "respond-text",
+      "name": "Return Text Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 950]
+    }
+  ],
+  "connections": {
+    "Receive Voice Memo": {
+      "main": [
+        [
+          {
+            "node": "Whisper Transcribe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper Transcribe": {
+      "main": [
+        [
+          {
+            "node": "Format Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Transcript": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Output": {
+      "main": [
+        [
+          {
+            "node": "Save Memo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Return Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Memos Endpoint": {
+      "main": [
+        [
+          {
+            "node": "List Memo Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Memo Files": {
+      "main": [
+        [
+          {
+            "node": "Format List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format List": {
+      "main": [
+        [
+          {
+            "node": "Return List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Memo Input": {
+      "main": [
+        [
+          {
+            "node": "Format Text Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Text Input": {
+      "main": [
+        [
+          {
+            "node": "Summarize Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize Text": {
+      "main": [
+        [
+          {
+            "node": "Build Text Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Text Output": {
+      "main": [
+        [
+          {
+            "node": "Save Text Memo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Return Text Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dream-server"
+  },
+  "tags": [
+    {
+      "name": "dream-server",
+      "id": "1"
+    },
+    {
+      "name": "voice",
+      "id": "3"
+    },
+    {
+      "name": "memos",
+      "id": "11"
+    }
+  ]
+}

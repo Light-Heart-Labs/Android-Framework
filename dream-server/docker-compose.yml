@@ -1,0 +1,679 @@
+# Dream Server - Config B (Standard)
+# Prosumer setup: vLLM + Open WebUI + Voice + n8n
+# Target: 32GB RAM, 16GB+ VRAM
+
+services:
+  # ============================================
+  # LLM Inference
+  # ============================================
+  vllm:
+    image: vllm/vllm-openai:v0.15.1  # Community image — compatible with driver 580+
+    container_name: dream-vllm
+    restart: unless-stopped
+    runtime: nvidia
+    ipc: host  # Required for vLLM shared memory
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${GPU_DEVICES:-all}
+      - HF_TOKEN=${HF_TOKEN:-}
+      # Prefer host driver libs over container CUDA compat libs (needed for newer GPUs)
+      - LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu
+    volumes:
+      - ./models:/root/.cache/huggingface
+      - ./data/vllm:/data
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+    command: >
+      --model ${LLM_MODEL:-Qwen/Qwen2.5-32B-Instruct-AWQ}
+      ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+      --max-model-len ${MAX_CONTEXT:-8192}
+      --gpu-memory-utilization ${GPU_UTIL:-0.9}
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 32G
+        reservations:
+          cpus: '2.0'
+          memory: 8G
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ============================================
+  # Chat UI
+  # ============================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.7.2  # Native function calling, DB fixes
+    container_name: dream-webui
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - OLLAMA_BASE_URL=
+      - OPENAI_API_BASE_URL=http://vllm:8000/v1
+      - OPENAI_API_KEY=not-needed
+      - WEBUI_AUTH=${WEBUI_AUTH:-true}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET:?Set WEBUI_SECRET in .env}
+      - ENABLE_RAG_WEB_SEARCH=${ENABLE_WEB_SEARCH:-true}
+      - RAG_WEB_SEARCH_ENGINE=${WEB_SEARCH_ENGINE:-duckduckgo}
+      - TZ=${TIMEZONE:-UTC}
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    depends_on:
+      vllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Speech-to-Text
+  # ============================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:v1.4.1  # Latest stable
+    container_name: dream-whisper
+    restart: unless-stopped
+    runtime: nvidia
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Model selection impacts latency vs quality:
+      # - tiny/base: ~350ms, best for real-time voice agents
+      # - small/medium: 1-2s, good quality/speed balance
+      # - large-v3: 8-10s, best quality for transcription
+      # See research/STT-MODEL-SELECTION.md for benchmarks
+      - ASR_MODEL=${WHISPER_MODEL:-base}  # Default: base for voice responsiveness
+      - ASR_ENGINE=faster_whisper
+    volumes:
+      - ./data/whisper:/root/.cache
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    profiles:
+      - voice
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Text-to-Speech (OpenTTS - HTTP API)
+  # ============================================
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
+    container_name: dream-tts
+    restart: unless-stopped
+    profiles:
+      - voice
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - DEFAULT_VOICE=af_heart
+    ports:
+      - "${TTS_PORT:-8880}:8880"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  # ============================================
+  # Workflow Automation
+  # ============================================
+  n8n:
+    image: n8nio/n8n:2.6.4  # Current stable (1.x is legacy)
+    container_name: dream-n8n
+    restart: unless-stopped
+    profiles:
+      - workflows
+    user: "${UID:-1000}:${GID:-1000}"  # Run as non-root
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_AUTH:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_USER:?N8N_USER must be set in .env}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASS:?N8N_PASS must be set in .env}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678}
+      - GENERIC_TIMEZONE=${TIMEZONE:-America/New_York}
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+      - ./config/n8n:/home/node/workflows
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Vector Database (RAG)
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:v1.16.3  # WAL/flush safety fixes
+    container_name: dream-qdrant
+    restart: unless-stopped
+    profiles:
+      - rag
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================
+  # Text Embeddings (RAG)
+  # ============================================
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.1
+    container_name: dream-embeddings
+    restart: unless-stopped
+    profiles:
+      - rag
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - MODEL_ID=${EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
+    volumes:
+      - ./data/embeddings:/data
+    ports:
+      - "${EMBEDDINGS_PORT:-8090}:80"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # API Gateway (optional, for multi-model)
+  # ============================================
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.81.3-stable  # Stable tag format
+    container_name: dream-litellm
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    user: "${UID:-1000}:${GID:-1000}"  # Run as non-root
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_KEY:?LITELLM_KEY must be set in .env}
+    volumes:
+      - ./config/litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    command: --config /app/config.yaml
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ============================================
+  # LiveKit Voice (Real-time WebRTC)
+  # ============================================
+  livekit:
+    build:
+      context: ./config/livekit
+      dockerfile: Dockerfile
+    image: dream-livekit:local
+    container_name: dream-livekit
+    restart: unless-stopped
+    profiles:
+      - voice
+    user: "${UID:-1000}:${GID:-1000}"  # Run as non-root
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set in .env}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set in .env}
+    volumes:
+      - ./config/livekit/livekit.yaml:/etc/livekit.yaml.template:ro
+    ports:
+      - "${LIVEKIT_PORT:-7880}:7880"      # HTTP/WebSocket
+      - "${LIVEKIT_RTC_PORT:-7881}:7881"  # RTC (UDP)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:7880/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  livekit-voice-agent:
+    build:
+      context: ./agents/voice
+      dockerfile: Dockerfile
+    container_name: dream-voice-agent
+    restart: unless-stopped
+    profiles:
+      - voice
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set in .env}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set in .env}
+      - LLM_URL=${LLM_URL:-http://vllm:8000/v1}  # Use local vLLM or override via .env
+      - LLM_MODEL=${LLM_MODEL:-Qwen/Qwen2.5-32B-Instruct-AWQ}
+      - STT_URL=http://whisper:9000/v1
+      - TTS_URL=http://tts:8880/v1
+      - DETERMINISTIC_ENABLED=${DETERMINISTIC_ENABLED:-true}
+      - DETERMINISTIC_THRESHOLD=${DETERMINISTIC_THRESHOLD:-0.85}
+      - FLOWS_DIR=/app/flows
+    volumes:
+      - ./agents/voice/flows:/app/flows:ro
+    depends_on:
+      livekit:
+        condition: service_healthy
+      vllm:
+        condition: service_healthy
+      whisper:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, signal; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # vLLM Tool Call Proxy (OpenClaw <-> vLLM bridge)
+  # ============================================
+  vllm-tool-proxy:
+    build:
+      context: ./vllm-tool-proxy
+    container_name: dream-vllm-tool-proxy
+    profiles:
+      - openclaw
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - VLLM_URL=http://vllm:8000
+      - MAX_TOOL_CALLS=500
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    depends_on:
+      vllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8003/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
+  # OpenClaw Agent Framework
+  # ============================================
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:latest  # Pinned for stability
+    container_name: dream-openclaw
+    profiles:
+      - openclaw
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - OPENCLAW_CONFIG=/config/openclaw.json
+      - OPENCLAW_DATA=/data
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_TOKEN:-dreamserver2026}
+    # Inject gateway token into Control UI so it auto-connects, then start gateway
+    entrypoint: ["/bin/sh", "-c", "node /config/inject-token.js; exec docker-entrypoint.sh node openclaw.mjs gateway --allow-unconfigured"]
+    volumes:
+      - ./config/openclaw:/config:ro
+      - ./data/openclaw:/data
+      - ./data/openclaw/home:/home/node/.openclaw
+      - ./config/openclaw/workspace:/home/node/.openclaw/workspace
+    ports:
+      - "${OPENCLAW_PORT:-7860}:18789"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    depends_on:
+      vllm:
+        condition: service_healthy
+      vllm-tool-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18789/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Privacy Shield - API PII Protection
+  # ============================================
+  privacy-shield:
+    build:
+      context: ./privacy-shield
+      dockerfile: Dockerfile
+    container_name: dream-privacy-shield
+    restart: unless-stopped
+    profiles:
+      - privacy
+    user: "${UID:-1000}:${GID:-1000}"  # Run as non-root
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TARGET_API_URL=${TARGET_API_URL:-http://vllm:8000/v1}
+      - TARGET_API_KEY=${TARGET_API_KEY:-not-needed}
+      - SHIELD_PORT=${SHIELD_PORT:-8085}
+      - PII_CACHE_ENABLED=${PII_CACHE_ENABLED:-true}
+      - PII_CACHE_SIZE=${PII_CACHE_SIZE:-1000}
+      - PII_CACHE_TTL=${PII_CACHE_TTL:-300}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./data/privacy-shield:/data  # Session persistence
+    ports:
+      - "${SHIELD_PORT:-8085}:8085"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
+  # Token Spy - LLM Usage Monitoring (TimescaleDB)
+  # ============================================
+  token-spy:
+    # Pre-built image - build separately if customizing
+    image: ${TOKEN_SPY_IMAGE:-lightheartlabs/token-spy:latest}
+    container_name: dream-token-spy
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    user: "${UID:-1000}:${GID:-1000}"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # TimescaleDB connection
+      - DATABASE_URL=postgresql://tokenspy:${TOKEN_SPY_DB_PASSWORD:?TOKEN_SPY_DB_PASSWORD must be set in .env}@token-spy-db:5432/tokenspy
+      # Redis for rate limiting
+      - REDIS_URL=redis://token-spy-redis:6379/0
+      # Proxy configuration
+      - PROXY_PORT=8080
+      - PROXY_HOST=0.0.0.0
+      # Default upstream (vLLM)
+      - DEFAULT_UPSTREAM_URL=${TOKEN_SPY_UPSTREAM:-http://vllm:8000/v1}
+      - DEFAULT_API_KEY=${TOKEN_SPY_API_KEY:-not-needed}
+      # Logging
+      - LOG_LEVEL=${TOKEN_SPY_LOG_LEVEL:-INFO}
+      - ENABLE_REQUEST_LOGGING=true
+      # Performance
+      - MAX_CONNECTIONS=100
+      - KEEPALIVE_CONNECTIONS=20
+      - REQUEST_TIMEOUT=300
+    ports:
+      - "${TOKEN_SPY_PORT:-8080}:8080"
+    depends_on:
+      token-spy-db:
+        condition: service_healthy
+      token-spy-redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Token Spy Database (TimescaleDB)
+  # ============================================
+  token-spy-db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: dream-token-spy-db
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    environment:
+      - POSTGRES_USER=tokenspy
+      - POSTGRES_PASSWORD=${TOKEN_SPY_DB_PASSWORD:?TOKEN_SPY_DB_PASSWORD must be set in .env}
+      - POSTGRES_DB=tokenspy
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - token-spy-db-data:/var/lib/postgresql/data
+      # Schema initialization (bundled with dream-server)
+      - ./token-spy-schema:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${TOKEN_SPY_DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tokenspy -d tokenspy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # Token Spy Redis (Rate Limiting)
+  # ============================================
+  token-spy-redis:
+    image: redis:7-alpine
+    container_name: dream-token-spy-redis
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - token-spy-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================
+  # Dashboard API (System Status Backend)
+  # ============================================
+  dashboard-api:
+    build:
+      context: ./dashboard-api
+      dockerfile: Dockerfile
+    container_name: dream-dashboard-api
+    restart: unless-stopped
+    runtime: nvidia  # Required for nvidia-smi GPU detection
+    # SECURITY FIX: Removed network_mode: host - use Docker network instead
+    # SECURITY FIX: Removed Docker socket mount - use external monitoring instead
+    # All services share the default network (named dream-network) automatically
+    ports:
+      - "${DASHBOARD_API_PORT:-3002}:3002"
+    # Note: Non-root user (dreamer) set in Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - DREAM_INSTALL_DIR=/dream-server
+      - DREAM_DATA_DIR=/data
+      - NVIDIA_VISIBLE_DEVICES=all
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_HOST=livekit
+      # SECURITY FIX: No default secrets - must be set in .env
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set in .env}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set in .env}
+      - KOKORO_URL=${KOKORO_URL:-http://tts:8880}
+      - N8N_URL=http://n8n:5678
+      - VLLM_METRICS_URL=http://vllm:8000/metrics
+      # API key for dashboard authentication - auto-generated if not set
+      - DASHBOARD_API_KEY=${DASHBOARD_API_KEY}
+      # Token Spy integration - TimescaleDB connection
+      - TOKEN_MONITOR_DB=${TOKEN_MONITOR_DB:-postgresql://tokenspy:${TOKEN_SPY_DB_PASSWORD:?TOKEN_SPY_DB_PASSWORD must be set in .env}@token-spy-db:5432/tokenspy}
+    volumes:
+      # SECURITY FIX: Removed /var/run/docker.sock mount
+      # SECURITY FIX: Mount only specific subdirectories, not entire project (avoids exposing .env secrets)
+      - ./scripts:/dream-server/scripts:ro             # Script access
+      - ./config:/dream-server/config:ro               # Config access (if exists)
+      - ./models:/dream-server/models:ro               # Model detection
+      - ./.env:/dream-server/.env:ro                   # Model/config info
+      - ./data:/data                                   # Bootstrap status + API key write (B1 fix)
+      - ./data/token-spy:/data/token-spy:ro            # Token Spy usage data
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
+  # Dashboard UI (Control Center)
+  # ============================================
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dream-dashboard
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - DASHBOARD_API_KEY=${DASHBOARD_API_KEY:-}
+    volumes:
+      # B1 fix: Mount data dir so entrypoint can read API key from dashboard-api-key.txt
+      - ./data:/data:ro
+    ports:
+      - "${DASHBOARD_PORT:-3001}:3001"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    depends_on:
+      - dashboard-api
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    name: dream-network
+
+volumes:
+  token-spy-db-data:
+    driver: local
+  token-spy-redis-data:
+    driver: local

@@ -1,0 +1,170 @@
+# Dream Server — Edge Tier
+# 16GB RAM or 8GB+ VRAM — 7-8B models, full voice stack
+# Usage: docker compose -f docker-compose.edge.yml up -d
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # LLM — Qwen2.5-7B (fits in 8GB VRAM with AWQ)
+  # ═══════════════════════════════════════════════════════════════
+  vllm:
+    image: vllm/vllm-openai:v0.15.1
+    runtime: nvidia
+    container_name: dream-vllm
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface
+    ports:
+      - "8000:8000"
+    command: >
+      --model Qwen/Qwen2.5-7B-Instruct-AWQ
+      ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+      --max-model-len 16384
+      --gpu-memory-utilization 0.85
+      --served-model-name gpt-4o
+      --trust-remote-code
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # STT — Whisper Medium (balances quality vs VRAM)
+  # ═══════════════════════════════════════════════════════════════
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    runtime: nvidia
+    container_name: dream-whisper
+    environment:
+      - WHISPER__MODEL=Systran/faster-whisper-medium
+      - WHISPER__DEVICE=cuda
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8001:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # TTS — Kokoro CPU (saves VRAM for LLM)
+  # ═══════════════════════════════════════════════════════════════
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi:v0.6.2-cpu
+    container_name: dream-kokoro
+    ports:
+      - "8880:8880"
+    volumes:
+      - kokoro-cache:/app/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # LiveKit — WebRTC Server
+  # ═══════════════════════════════════════════════════════════════
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: dream-livekit
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    command: --config /livekit.yaml
+    environment:
+      # Keys passed via env var (safer than config file)
+      - LIVEKIT_KEYS=${LIVEKIT_API_KEY}:${LIVEKIT_API_SECRET}
+    volumes:
+      - ./livekit.yaml:/livekit.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7880"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # Voice Agent
+  # ═══════════════════════════════════════════════════════════════
+  voice-agent:
+    build:
+      context: ./agents/voice
+      dockerfile: Dockerfile
+    container_name: dream-voice-agent
+    environment:
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - LLM_BASE_URL=http://vllm:8000/v1
+      - STT_BASE_URL=http://whisper:8000
+      - TTS_BASE_URL=http://kokoro:8880
+    depends_on:
+      vllm:
+        condition: service_healthy
+      whisper:
+        condition: service_healthy
+      kokoro:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ═══════════════════════════════════════════════════════════════
+  # Dashboard + API
+  # ═══════════════════════════════════════════════════════════════
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dream-dashboard
+    ports:
+      - "3001:3001"
+    environment:
+      - VITE_API_URL=http://localhost:3002
+      - VITE_LIVEKIT_URL=ws://localhost:7880
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./dashboard-api
+      dockerfile: Dockerfile
+    container_name: dream-api
+    ports:
+      - "3002:3002"
+    environment:
+      - VLLM_URL=http://vllm:8000
+      - WHISPER_URL=http://whisper:8000
+      - KOKORO_URL=http://kokoro:8880
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+    depends_on:
+      - vllm
+    restart: unless-stopped
+
+volumes:
+  kokoro-cache:

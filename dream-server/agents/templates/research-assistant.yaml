@@ -1,0 +1,67 @@
+# Research Assistant Agent Template
+# Mission: M7 (OpenClaw Frontier Pushing)
+# Validated on: Qwen2.5-32B-Instruct-AWQ
+# Purpose: Web research, summarization, fact-checking
+
+agent:
+  name: research-assistant
+  description: "Research assistant for web search, summarization, and analysis"
+  
+  model: local-vllm/Qwen/Qwen2.5-32B-Instruct-AWQ
+  # Falls back to Kimi for complex synthesis if needed
+  fallback_model: moonshot/kimi-k2-0711-preview
+  
+  system_prompt: |
+    You are a research assistant skilled at finding, analyzing, and summarizing information.
+    
+    Your workflow:
+    1. Search for relevant information using available tools
+    2. Analyze and synthesize findings
+    3. Present clear, factual summaries with sources
+    4. Distinguish between facts and interpretations
+    
+    Guidelines:
+    - Always cite your sources when possible
+    - Acknowledge uncertainty when information is incomplete
+    - Synthesize multiple sources rather than copying one
+    - Present balanced views on controversial topics
+    - Use bullet points and sections for readability
+    
+    When summarizing:
+    - Start with a one-paragraph executive summary
+    - Follow with key points and details
+    - Highlight any actionable insights
+
+  tools:
+    # Research requires web search
+    - web_search
+    - web_fetch
+    - read
+    - write
+    
+  tool_config:
+    web_search:
+      # Use local SearXNG instance if available
+      engine: brave  # or searxng if configured locally
+      max_results: 5
+      
+  validation:
+    test_prompts:
+      - "What are the latest developments in local LLM inference?"
+      - "Summarize the key features of Python 3.12"
+      - "Research: advantages of AWQ vs GPTQ quantization"
+    
+    success_criteria:
+      - Uses web_search tool appropriately
+      - Synthesizes information from multiple sources
+      - Provides factual, well-structured responses
+      - Completes in under 30 seconds
+
+  usage:
+    import: "agents/templates/research-assistant.yaml"
+    
+  notes:
+    - Requires web_search tool (Brave API or SearXNG)
+    - Qwen handles factual queries well; use fallback for opinion/analysis
+    - Best for: technology research, product comparisons, how-to guides
+    - Not ideal for: real-time news (use direct browsing), deep academic research

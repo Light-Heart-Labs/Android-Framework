@@ -1,538 +1,102 @@
 # Lighthouse AI
 
-**Operations toolkit for persistent LLM agents — process watchdog, session cleanup, memory reset, API cost monitoring, and tool call proxy.**
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/Light-Heart-Labs/Lighthouse-AI)](https://github.com/Light-Heart-Labs/Lighthouse-AI)
 
-Framework-agnostic patterns born from the Android Collective: 3 AI agents, 3,464 commits, 8 days. Built for OpenClaw, works with any agent stack.
+**Your hardware. Your data. Your rules.**
 
-About 70% of this repository is framework-agnostic. The patterns for identity,
-memory, coordination, autonomy, and observability apply to any agent system —
-Claude Code, LangChain, AutoGPT, custom agents, or anything else that runs long
-enough to accumulate state. The remaining 30% is a reference implementation
-using [OpenClaw](https://openclaw.io) and vLLM that demonstrates the patterns
-concretely.
-
-This is the infrastructure layer of a proven multi-agent architecture — the
-[OpenClaw Collective](COLLECTIVE.md) — where 3 AI agents coordinate
-autonomously on shared projects using local GPU hardware. The companion
-repository **Android-Labs** (private) is the proof of work: 3,464 commits from
-3 agents over 8 days, producing three shipping products and 50+ technical
-research documents. These tools kept them running.
-
-**Start here:** [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) — the conceptual
-foundation, five pillars, complete failure taxonomy, and a reading map based on
-what you're building.
-
-| Component | What it does | Requires OpenClaw? | Platform |
-|-----------|-------------|-------------------|----------|
-| [Session Watchdog](#session-watchdog) | Auto-cleans bloated sessions before context overflow | Yes | Linux, Windows |
-| [vLLM Tool Call Proxy](#vllm-tool-call-proxy-v4) | Makes local model tool calling work | Yes | Linux |
-| [Token Spy](#token-spy--api-cost--usage-monitor) | API cost monitoring with real-time dashboard | No (any OpenAI/Anthropic client) | Linux |
-| [Guardian](#guardian) | Self-healing process watchdog with backup restore | No (any Linux services) | Linux (root) |
-| [Memory Shepherd](#memory-shepherd) | Periodic memory reset to prevent agent drift | No (any markdown-based agent memory) | Linux |
-| [Golden Configs](#golden-configs) | Working config templates for OpenClaw + vLLM | Yes | Any |
-| [Workspace Templates](#workspace-templates) | Agent personality/identity starter files | Yes | Any |
-| [LLM Cold Storage](#llm-cold-storage) | Archive idle HuggingFace models to free disk | No | Linux |
-| [Docker Compose Stacks](#docker-compose-stacks) | One-command deployment (nano/pro tiers) | No | Any |
-| [Cookbook Recipes](#cookbook-recipes) | Step-by-step guides: voice, RAG, code, privacy, multi-GPU, swarms | No | Linux |
-
----
-
-## What's Inside
-
-### The Methodology
-
-These docs capture what we learned running persistent agent teams. They apply to
-any framework.
-
-| Doc | What It Covers |
-|-----|---------------|
-| [PHILOSOPHY.md](docs/PHILOSOPHY.md) | **Start here.** Five pillars of persistent agents, failure taxonomy, reading map, framework portability guide |
-| [WRITING-BASELINES.md](memory-shepherd/docs/WRITING-BASELINES.md) | How to define agent identity that survives resets and drift |
-| [MULTI-AGENT-PATTERNS.md](docs/MULTI-AGENT-PATTERNS.md) | Coordination protocols, reliability math, sub-agent spawning, echo chamber prevention, supervisor pattern |
-| [OPERATIONAL-LESSONS.md](docs/OPERATIONAL-LESSONS.md) | Silent failures, memory management, tool calling reliability, production safety, background GPU automation |
-| [GUARDIAN.md](docs/GUARDIAN.md) | Infrastructure protection, autonomy tiers, immutable watchdogs, defense in depth |
-| [Cookbook Recipes](docs/cookbook/) | **Practical step-by-step guides** — voice agents, RAG, code assistant, privacy proxy, multi-GPU, swarms, n8n |
-| [Research](docs/research/) | Hardware buying guide, GPU TTS benchmarks, open-source model landscape |
-| [Token Monitor Scope](docs/TOKEN-MONITOR-PRODUCT-SCOPE.md) | Token Spy product roadmap, competitive analysis, pricing strategy |
-
-### The Reference Implementation (OpenClaw + vLLM)
-
-Working tools that implement the methodology. Use them directly or adapt the
-patterns to your stack.
-
-**Session Watchdog** — Monitors `.jsonl` session files and cleans up bloated
-ones before they hit the context ceiling. The agent doesn't notice — it just
-gets a clean context window mid-conversation.
-
-**vLLM Tool Call Proxy (v4)** — Transparent proxy between OpenClaw and vLLM
-that makes local model tool calling work. Handles SSE re-wrapping, tool call
-extraction from text, response cleaning, and loop protection.
-
-**Token Spy** — Transparent API proxy that captures per-turn token usage, cost,
-latency, and session health for cloud model calls (Anthropic, OpenAI, Moonshot).
-Real-time dashboard with session health cards, cost charts, and auto-kill for
-sessions exceeding configurable limits. Works with any OpenAI-compatible or
-Anthropic API client.
-
-**Memory Shepherd** — Periodic memory reset for persistent agents. Archives
-scratch notes and restores MEMORY.md to a curated baseline on a schedule.
-Defines the `---` separator convention: operator-controlled identity above,
-agent scratch space below.
-
-**Guardian** — Self-healing process watchdog for LLM infrastructure. Runs as a
-root systemd service that agents cannot kill or modify. Monitors processes,
-systemd services, Docker containers, and file integrity — automatically
-restoring from known-good backups when things break. Supports tiered health
-checks, recovery cascades, and generational backups. See
-[guardian/README.md](guardian/README.md) for full documentation.
-
-**Golden Configs** — Battle-tested `openclaw.json` and `models.json` with the
-critical `compat` block that prevents silent failures. Workspace templates for
-agent personality, identity, tools, and working memory.
-
-**Architecture Docs** — How OpenClaw talks to vLLM, why the proxy exists, how
-session files work, and the five failure points that kill local setups.
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [SETUP.md](docs/SETUP.md).
-
----
-
-## The Bigger Picture
-
-These tools were extracted from a running multi-agent system — the [OpenClaw Collective](COLLECTIVE.md) — where AI agents coordinate autonomously on long-term projects. Here's how each component fits:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│               Mission Governance (MISSIONS.md)           │
-│              Constrains what agents work on               │
-├─────────────────────────────────────────────────────────┤
-│            Deterministic Supervisor (Android-18)          │
-│           Timed pings, session resets, accountability     │
-├──────────────┬──────────────┬───────────────────────────┤
-│ Session      │ Memory       │ Infrastructure             │
-│ Watchdog     │ Shepherd     │ Guardian                   │
-│ + Token Spy  │              │                            │
-│              │              │                            │
-│ Context      │ Identity     │ Process monitoring,        │
-│ overflow     │ drift        │ file integrity,            │
-│ prevention   │ prevention   │ auto-restore               │
-├──────────────┴──────────────┴───────────────────────────┤
-│              Workspace Templates (SOUL, IDENTITY,         │
-│              TOOLS, MEMORY) — Persistent agent identity   │
-├─────────────────────────────────────────────────────────┤
-│     vLLM Tool Proxy + Golden Configs — Local inference    │
-└─────────────────────────────────────────────────────────┘
-```
-
-For the full architecture: **[COLLECTIVE.md](COLLECTIVE.md)**
-For transferable patterns applicable to any agent framework: **[docs/PATTERNS.md](docs/PATTERNS.md)**
-For the rationale behind every design choice: **[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md)**
-
----
-
-## Quick Start
-
-### Option 1: Full Install (Session Cleanup + Proxy)
+One installer. Bare metal to fully running local AI stack in 10 minutes — LLM inference, chat UI, voice agents, workflow automation, RAG, and privacy tools. No subscriptions. No cloud. Runs entirely offline.
 
 ```bash
-git clone https://github.com/Light-Heart-Labs/Lighthouse-AI.git
-cd Lighthouse-AI
-
-# Edit config for your setup
-nano config.yaml
-
-# Install everything
-chmod +x install.sh
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/get-dream-server.sh | bash
 ```
 
-### Option 2: Just the Parts You Need
+<!-- Screenshot/GIF: Add a recording of Dream Server running (dashboard + chat UI) here before launch -->
 
-```bash
-# Session cleanup only (works with cloud models too)
-./install.sh --cleanup-only
+## What You Get
 
-# Tool proxy only (for local vLLM setups)
-./install.sh --proxy-only
+| | |
+|---|---|
+| **LLM Inference** (vLLM) | GPU-accelerated, auto-selects 7B to 72B models for your hardware |
+| **Chat UI** (Open WebUI) | Full-featured chat interface with model management |
+| **Voice** (Whisper + Kokoro + LiveKit) | Speech-to-text, text-to-speech, real-time WebRTC conversations |
+| **Workflows** (n8n) | Visual workflow editor with 400+ integrations |
+| **RAG** (Qdrant) | Vector database for document Q&A |
+| **Privacy Shield** | PII redaction before anything leaves your network |
+| **Dashboard** | Real-time GPU metrics, service health, system status |
+| **API Gateway** (LiteLLM) | Multi-model routing, OpenAI-compatible API |
+| **OpenClaw Agents** | Multi-agent AI coordination on local hardware |
 
-# Token Spy only (API cost monitoring for cloud models)
-./install.sh --token-spy-only
+### vs. The Alternatives
 
-# Windows
-.\install.ps1
-.\install.ps1 -CleanupOnly
-.\install.ps1 -ProxyOnly
-.\install.ps1 -TokenSpyOnly
-```
-
-### Option 3: Running vLLM from Scratch
-
-If you're setting up a local model from zero, see [docs/SETUP.md](docs/SETUP.md) for the full walkthrough — vLLM, proxy, OpenClaw config, and testing.
-
-```bash
-# Start vLLM (needs NVIDIA GPU + Docker)
-./scripts/start-vllm.sh
-
-# Start the proxy
-pip3 install flask requests
-./scripts/start-proxy.sh
-
-# Configure OpenClaw
-cp configs/openclaw.json ~/.openclaw/openclaw.json
-rm -f ~/.openclaw/agents/main/agent/models.json
-export VLLM_API_KEY=vllm-local
-
-# Test
-openclaw agent --local --agent main -m 'What is 2+2?'
-```
-
-### Option 4: Guardian (Process Watchdog)
-
-Works with any Linux service stack — not OpenClaw-specific. See [guardian/README.md](guardian/README.md) for full docs.
-
-```bash
-cd guardian
-cp guardian.conf.example guardian.conf
-nano guardian.conf          # Define your monitored resources
-nano guardian.service       # Add your paths to ReadWritePaths
-sudo ./install.sh           # Installs to systemd as root service
-```
-
-### Option 5: Memory Shepherd (Memory Reset)
-
-Works with any agent that uses markdown memory files. See [memory-shepherd/README.md](memory-shepherd/README.md) for full docs.
-
-```bash
-cd memory-shepherd
-cp memory-shepherd.conf.example memory-shepherd.conf
-nano memory-shepherd.conf   # Define your agents and baselines
-sudo ./install.sh           # Installs as systemd timer
-```
-
-### Option 6: Docker Compose (Full Stack)
-
-Deploy a complete local AI stack with one command. Choose your tier:
-
-```bash
-cd compose
-cp .env.example .env
-nano .env                              # Set your secrets
-
-# Pro tier (24GB+ VRAM — vLLM, Whisper, TTS, voice agent, dashboard)
-docker compose -f docker-compose.pro.yml up -d
-
-# Nano tier (CPU only — llama.cpp, dashboard, no voice)
-docker compose -f docker-compose.nano.yml up -d
-```
-
-### Option 7: LLM Cold Storage
-
-Archive HuggingFace models idle for 7+ days to free disk space. Models stay resolvable via symlink.
-
-```bash
-# Dry run (shows what would be archived)
-./scripts/llm-cold-storage.sh
-
-# Execute for real
-./scripts/llm-cold-storage.sh --execute
-
-# Check status
-./scripts/llm-cold-storage.sh --status
-
-# Install as daily systemd timer
-cp systemd/llm-cold-storage.service systemd/llm-cold-storage.timer ~/.config/systemd/user/
-systemctl --user enable --now llm-cold-storage.timer
-```
+| Feature | Dream Server | Ollama + WebUI | LocalAI |
+|---------|:---:|:---:|:---:|
+| One-command install | **Yes** | Manual | Manual |
+| Hardware auto-detect | **Yes** | No | No |
+| Voice agents (STT + TTS + WebRTC) | **Yes** | No | Limited |
+| vLLM inference speed | **Yes** | No | No |
+| Workflow automation | **n8n built in** | No | No |
+| Privacy tools | **PII redaction** | No | No |
+| Multi-GPU | **Yes** | Partial | Partial |
 
 ---
 
-## Configuration
+## Hardware Tiers (Auto-Detected)
 
-Edit `config.yaml` before installing:
+The installer detects your GPU and picks the optimal model automatically:
 
-```yaml
-session_cleanup:
-  enabled: true
-  openclaw_dir: "~/.openclaw"
-  sessions_path: "agents/main/sessions"
-  max_session_size: 256000    # 250KB — tune for your model
-  interval_minutes: 60
+| Tier | VRAM | Model | Example GPUs |
+|------|------|-------|--------------|
+| Entry | <12GB | Qwen2.5-7B | RTX 3080, RTX 4070 |
+| Prosumer | 12-20GB | Qwen2.5-14B-AWQ | RTX 3090, RTX 4080 |
+| Pro | 20-40GB | Qwen2.5-32B-AWQ | RTX 4090, A6000 |
+| Enterprise | 40GB+ | Qwen2.5-72B-AWQ | A100, H100, multi-GPU |
 
-tool_proxy:
-  enabled: true
-  port: 8003
-  vllm_url: "http://localhost:8000"
-  max_tool_calls: 500         # Safety limit for loop protection
+Override: `./install.sh --tier 3` | Windows: [`install.ps1`](dream-server/README.md#windows) handles WSL2 + Docker automatically
 
-token_spy:
-  enabled: false              # Set to true to enable
-  agent_name: "my-agent"
-  port: 9110
-  anthropic_upstream: "https://api.anthropic.com"
-  openai_upstream: ""         # e.g., "https://api.moonshot.ai"
-  session_char_limit: 200000  # ~50K tokens
-```
-
-### Session Size Guide
-
-| Model Context | Recommended max_session_size | Recommended interval |
-|---|---|---|
-| 8K tokens | 64000 (64KB) | 15 min |
-| 16K tokens | 128000 (128KB) | 30 min |
-| 32K tokens | 256000 (250KB) | 60 min |
-| 64K tokens | 512000 (500KB) | 90 min |
-| 128K tokens | 1024000 (1MB) | 120 min |
+**Bootstrap mode:** Starts a tiny model instantly, lets you chat in 2 minutes while the full model downloads in the background. Hot-swap with zero downtime when ready.
 
 ---
 
-## The Compat Block (Read This)
+## OpenClaw — Multi-Agent AI on Your GPU
 
-The most important four lines in the entire repo. Without them, OpenClaw sends parameters that vLLM silently rejects:
+Dream Server ships with local [OpenClaw](https://openclaw.io) support out of the box — the multi-agent framework for AI agents coordinating autonomously on your hardware. Includes vLLM Tool Call Proxy, battle-tested configs, and workspace templates for agent identity.
 
-```json
-"compat": {
-  "supportsStore": false,
-  "supportsDeveloperRole": false,
-  "supportsReasoningEffort": false,
-  "maxTokensField": "max_tokens"
-}
-```
-
-| Flag | What happens without it |
-|------|------------------------|
-| `supportsStore: false` | OpenClaw sends `store: false` → vLLM rejects the request |
-| `supportsDeveloperRole: false` | OpenClaw sends `developer` role → vLLM doesn't understand it |
-| `supportsReasoningEffort: false` | OpenClaw sends reasoning params → vLLM rejects them |
-| `maxTokensField: "max_tokens"` | OpenClaw sends `max_completion_tokens` → vLLM wants `max_tokens` |
-
-These are already set in `configs/openclaw.json`. Just copy it and go.
-
-### Gateway Config (Security Note)
-
-The golden config includes gateway settings for LAN access:
-
-```json
-"gateway": {
-  "bind": "lan",
-  "controlUi": {
-    "allowInsecureAuth": true,
-    "dangerouslyDisableDeviceAuth": true
-  }
-}
-```
-
-**`dangerouslyDisableDeviceAuth: true`** — Disables the device authorization flow that normally requires confirming new devices via the OpenClaw UI. Set to `true` here because local/headless setups (SSH, systemd) can't complete the interactive auth prompt. **If you expose your gateway to the internet, set this to `false`.**
-
-**`allowInsecureAuth: true`** — Allows HTTP (non-HTTPS) auth on LAN. Safe for local networks, not for public-facing deployments.
+This repo was born from the [OpenClaw Collective](COLLECTIVE.md) — 3 AI agents, 3,464 commits, 8 days, three shipping products built autonomously on local GPUs. Dream Server packages that into something anyone can set up in 10 minutes.
 
 ---
 
-## How It Works
+## Operations Toolkit
 
-### Session Cleanup Flow
+Standalone tools for running persistent AI agents in production. Each works independently — grab what you need.
 
-```
-Every N minutes:
-  1. Read sessions.json → get active session IDs
-  2. Clean up .deleted.* and .bak* debris files
-  3. For each .jsonl session file:
-     - Not in active list → delete (orphan cleanup)
-     - Active AND > max_session_size → delete + remove from sessions.json
-  4. Gateway detects missing session → creates new one automatically
-  5. Agent gets clean context. Never notices the swap.
-```
+| Tool | Purpose |
+|------|---------|
+| [**Guardian**](guardian/) | Self-healing process watchdog — monitors services, restores from backup, runs as root so agents can't kill it |
+| [**Memory Shepherd**](memory-shepherd/) | Periodic memory reset to prevent identity drift in long-running agents |
+| [**Token Spy**](token-spy/) | API cost monitoring with real-time dashboard and auto-kill for runaway sessions |
+| [**vLLM Tool Proxy**](scripts/vllm-tool-proxy.py) | Makes local model tool calling work with OpenClaw — SSE re-wrapping, extraction, loop protection |
+| [**LLM Cold Storage**](scripts/llm-cold-storage.sh) | Archives idle HuggingFace models to free disk, models stay resolvable via symlink |
 
-### Tool Proxy Flow
-
-```
-OpenClaw sends request (stream: true, tools: [...])
-  → Proxy forces stream: false (can't extract tools from chunks)
-  → Forward to vLLM as non-streaming
-  → vLLM responds with JSON
-  → Proxy extracts tool calls from content (tags, bare JSON, multi-line)
-  → Proxy cleans vLLM-specific fields
-  → Proxy re-wraps as SSE stream
-  → OpenClaw receives proper streaming response with tool_calls
-```
-
-### Token Spy Flow
-
-```
-OpenClaw sends request to Token Spy (instead of direct to API)
-  → Token Spy logs: model, tokens, cache, cost, latency, session health
-  → Token Spy forwards to upstream (Anthropic/OpenAI) untouched
-  → Upstream responds (JSON or SSE stream)
-  → Token Spy forwards response back untouched
-  → Dashboard updates in real-time
-  → If session exceeds char limit → auto-kill session file
-```
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full deep dive.
+[Toolkit install guide →](docs/SETUP.md) | [Philosophy & patterns →](docs/PHILOSOPHY.md)
 
 ---
 
-## Project Structure
+## Documentation
 
-```
-Lighthouse-AI/
-├── config.yaml                         # Configuration (edit this first)
-├── install.sh                          # Linux installer
-├── install.ps1                         # Windows installer
-├── configs/
-│   ├── openclaw.json                   # Golden OpenClaw config template
-│   ├── models.json                     # Model definition with compat flags
-│   └── openclaw-gateway.service        # systemd service for OpenClaw gateway
-├── scripts/
-│   ├── session-cleanup.sh              # Session watchdog script
-│   ├── vllm-tool-proxy.py             # vLLM tool call proxy (v4)
-│   ├── llm-cold-storage.sh            # Archive idle HuggingFace models
-│   ├── start-vllm.sh                  # Start vLLM via Docker
-│   └── start-proxy.sh                 # Start the tool call proxy
-├── compose/
-│   ├── docker-compose.pro.yml         # Full GPU stack (vLLM + voice + dashboard)
-│   ├── docker-compose.nano.yml        # CPU-only minimal stack
-│   └── .env.example                   # Environment template
-├── token-spy/                          # API cost & usage monitor
-│   ├── main.py                        # Proxy server + embedded dashboard
-│   ├── db.py                          # SQLite storage layer
-│   ├── db_postgres.py                 # PostgreSQL/TimescaleDB layer
-│   ├── providers/                     # Pluggable cost calculation
-│   │   ├── anthropic.py
-│   │   └── openai.py
-│   ├── .env.example                   # Configuration reference
-│   └── requirements.txt               # Python dependencies
-├── workspace/
-│   ├── SOUL.md                        # Agent personality template
-│   ├── IDENTITY.md                    # Agent identity template
-│   ├── TOOLS.md                       # Available tools reference
-│   └── MEMORY.md                      # Working memory template
-├── systemd/
-│   ├── openclaw-session-cleanup.service
-│   ├── openclaw-session-cleanup.timer
-│   ├── vllm-tool-proxy.service
-│   ├── token-spy@.service             # Token Spy (templated per-agent)
-│   ├── llm-cold-storage.service       # Model archival (oneshot)
-│   └── llm-cold-storage.timer         # Daily trigger for cold storage
-├── memory-shepherd/                    # Periodic memory reset for agents
-│   ├── memory-shepherd.sh             # Config-driven reset script
-│   ├── memory-shepherd.conf.example   # Example agent config
-│   ├── install.sh                     # Systemd timer installer
-│   ├── uninstall.sh                   # Systemd timer removal
-│   ├── baselines/                     # Baseline MEMORY.md templates
-│   └── docs/
-│       └── WRITING-BASELINES.md       # Guide to writing effective baselines
-├── guardian/                           # Self-healing process watchdog
-│   ├── guardian.sh                    # Config-driven watchdog script
-│   ├── guardian.conf.example          # Sanitized example config
-│   ├── guardian.service               # Systemd unit template
-│   ├── install.sh                     # Installer (systemd + immutable flags)
-│   ├── uninstall.sh                   # Uninstaller
-│   └── docs/
-│       └── HEALTH-CHECKS.md           # Health check & recovery reference
-├── docs/
-│   ├── PHILOSOPHY.md                  # Start here — pillars, failures, reading map
-│   ├── SETUP.md                       # Full local setup guide
-│   ├── ARCHITECTURE.md                # How it all fits together
-│   ├── TOKEN-SPY.md                   # Token Spy setup & API reference
-│   ├── TOKEN-MONITOR-PRODUCT-SCOPE.md # Token Spy product roadmap & competitive analysis
-│   ├── OPERATIONAL-LESSONS.md         # Hard-won lessons from 24/7 agent ops
-│   ├── MULTI-AGENT-PATTERNS.md        # Coordination, swarms, and reliability
-│   ├── GUARDIAN.md                    # Infrastructure protection & autonomy tiers
-│   ├── cookbook/                       # Step-by-step practical recipes
-│   │   ├── 01-voice-agent-setup.md    #   Whisper + vLLM + Kokoro
-│   │   ├── 02-document-qa-setup.md    #   RAG with Qdrant/ChromaDB
-│   │   ├── 03-code-assistant-setup.md #   Tool-calling code agent
-│   │   ├── 04-privacy-proxy-setup.md  #   PII-stripping API proxy
-│   │   ├── 05-multi-gpu-cluster.md    #   Multi-node load balancing
-│   │   ├── 06-swarm-patterns.md       #   Sub-agent parallelization
-│   │   ├── 08-n8n-local-llm.md        #   Workflow automation
-│   │   └── agent-template-code.md     #   Agent template with debugging protocol
-│   └── research/                      # Technical research & benchmarks
-│       ├── HARDWARE-GUIDE.md          #   GPU buying guide with real prices
-│       ├── GPU-TTS-BENCHMARK.md       #   TTS latency benchmarks
-│       └── OSS-MODEL-LANDSCAPE-2026-02.md  # Open-source model comparison
-└── LICENSE
-```
-
----
-
-## Supported Models
-
-The tool proxy works with any vLLM-compatible model. Tested with:
-
-| Model | VRAM | Tool Parser | Notes |
-|-------|------|-------------|-------|
-| Qwen/Qwen3-Coder-Next-FP8 | ~75GB | `qwen3_coder` | Best for coding agents. 80B MoE. |
-| Qwen2.5-Coder (all sizes) | 4-48GB | `hermes` | Outputs `<tools>` tags |
-| Qwen2.5 Instruct (all sizes) | 4-48GB | `hermes` | Outputs `<tools>` tags |
-| Qwen/Qwen3-8B | ~16GB | `hermes` | Good starter for consumer GPUs |
-
-The proxy handles tool call extraction regardless of format — `<tools>` tags, bare JSON, or multi-line JSON.
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VLLM_MODEL` | `Qwen/Qwen3-Coder-Next-FP8` | HuggingFace model ID |
-| `VLLM_PORT` | `8000` | vLLM API port |
-| `VLLM_URL` | `http://localhost:8000` | vLLM base URL (for proxy) |
-| `PROXY_PORT` | `8003` | Tool call proxy port |
-| `MAX_TOOL_CALLS` | `500` | Safety limit for tool call loops |
-| `VLLM_GPU_UTIL` | `0.92` | GPU memory utilization |
-| `VLLM_MAX_LEN` | `131072` | Max context length |
-| `VLLM_VERSION` | `v0.15.1` | vLLM Docker image tag |
-| `VLLM_TOOL_PARSER` | `qwen3_coder` | Tool call parser |
-| `VLLM_API_KEY` | — | API key for OpenClaw (can be anything) |
-
-### Token Spy Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AGENT_NAME` | `unknown` | Agent identifier shown in dashboard |
-| `PORT` | `9110` | Token Spy proxy port |
-| `ANTHROPIC_UPSTREAM` | `https://api.anthropic.com` | Upstream for `/v1/messages` |
-| `OPENAI_UPSTREAM` | *(empty)* | Upstream for `/v1/chat/completions` |
-| `DB_BACKEND` | `sqlite` | `sqlite` or `postgres` |
-| `SESSION_CHAR_LIMIT` | `200000` | Auto-reset threshold in characters |
-| `AGENT_SESSION_DIRS` | *(empty)* | JSON map of agent name to session dir |
-| `LOCAL_MODEL_AGENTS` | *(empty)* | Comma-separated agents with $0 cost |
-
----
-
-## Troubleshooting
-
-See [docs/SETUP.md](docs/SETUP.md) for the full troubleshooting guide. Quick hits:
-
-| Problem | Fix |
-|---------|-----|
-| "No reply from agent" / 0 tokens | `baseUrl` must point to proxy (:8003), not vLLM (:8000) |
-| Config validation errors | Only use the four compat flags listed above |
-| Tool calls as plain text | Check proxy is running: `curl localhost:8003/health` |
-| Agent stuck in loop | Proxy aborts at 500 calls. Lower `MAX_TOOL_CALLS` if needed |
-| vLLM CUDA crash | Add `--compilation_config.cudagraph_mode=PIECEWISE` |
-| vLLM assertion error | Don't use `--kv-cache-dtype fp8` with Qwen3-Next |
-| Token Spy dashboard empty | Ensure your agent's `baseUrl` points to Token Spy, not the upstream API |
-| Token Spy 502 errors | Check `ANTHROPIC_UPSTREAM` or `OPENAI_UPSTREAM` is set correctly in `.env` |
-
----
-
-## Further Reading
-
-- **[COLLECTIVE.md](COLLECTIVE.md)** — Full architecture of the multi-agent system this toolkit powers
-- **[docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md)** — Why we made the choices we did: session limits, ping cycles, deterministic supervision, and more
-- **[docs/PATTERNS.md](docs/PATTERNS.md)** — Six transferable patterns for autonomous agent systems, applicable to any framework
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Deep dive on the vLLM Tool Call Proxy internals
-- **[docs/cookbook/](docs/cookbook/)** — Practical step-by-step recipes for voice, RAG, code, privacy, multi-GPU, swarms, and workflow automation
-- **[docs/research/](docs/research/)** — Hardware guide, GPU benchmarks, open-source model landscape
-- **Android-Labs** (private) — Proof of work: 3,464 commits from 3 AI agents in 8 days
+| | |
+|---|---|
+| [**Dream Server QUICKSTART**](dream-server/QUICKSTART.md) | Step-by-step install guide |
+| [**FAQ**](dream-server/FAQ.md) | Troubleshooting, usage, advanced config |
+| [**Hardware Guide**](dream-server/docs/HARDWARE-GUIDE.md) | What to buy — GPU recommendations with real prices |
+| [**Cookbook**](docs/cookbook/) | Recipes: voice agents, RAG, code assistant, privacy proxy, multi-GPU, swarms |
+| [**Architecture**](docs/ARCHITECTURE.md) | How it all works under the hood |
+| [**COLLECTIVE.md**](COLLECTIVE.md) | Origin story — the AI agents that built these tools |
 
 ---
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE)
+Apache 2.0 — see [LICENSE](LICENSE). Use it, modify it, ship it.
 
----
-
-Built from production experience by [Lightheart Labs](https://github.com/Light-Heart-Labs) and the [Android Collective](COLLECTIVE.md). The patterns were discovered by the agents. The docs were written by the agents. The lessons were learned the hard way.
+Built by [Lightheart Labs](https://github.com/Light-Heart-Labs) and the [Android Collective](COLLECTIVE.md).

@@ -1,0 +1,31 @@
+# Dream Server - Prosumer Tier Profile
+# Target: RTX 5090 (28-47GB VRAM)
+# Optimized for: Qwen2.5-32B quantized with good context
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    command: >
+      --model Qwen/Qwen2.5-32B-Instruct-AWQ
+      --port 8000
+      --gpu-memory-utilization 0.92
+      --max-model-len 16384
+      --enable-chunked-prefill
+      --max-num-batched-tokens 8192
+      --quantization awq
+      --dtype auto
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s

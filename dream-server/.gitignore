@@ -1,0 +1,24 @@
+# Runtime / secrets
+.env
+.env.*
+
+# Install-time data directories
+data/
+models/
+
+# OpenClaw workspace (runtime state)
+config/openclaw/workspace/
+
+# Dashboard build artifacts
+dashboard/node_modules/
+dashboard/dist/
+
+# Preflight logs
+preflight-*.log
+
+# Internal dev
+internal/
+
+# OS junk
+.DS_Store
+Thumbs.db

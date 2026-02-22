@@ -1,0 +1,125 @@
+# docker-compose.local.yml — Local Mode (100% Offline)
+# Mission: M1 (Fully Local OpenClaw) → M5 (Clonable Dream Setup Server)
+# Mode: 100% offline operation, local GPU inference, no cloud dependencies
+#
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  ⚠️  SECURITY WARNING: HOST NETWORK MODE                                 ║
+# ╠══════════════════════════════════════════════════════════════════════════╣
+# ║  This file uses network_mode: host for simplicity. Implications:        ║
+# ║                                                                          ║
+# ║  • ALL services exposed on ALL host network interfaces (LAN-visible)    ║
+# ║  • Open WebUI has NO authentication by default                          ║
+# ║  • n8n workflows accessible without auth                                ║
+# ║  • Anyone on your network can access your AI server                     ║
+# ║                                                                          ║
+# ║  MITIGATIONS (choose at least one):                                     ║
+# ║  1. Firewall: sudo ufw deny from any to any port 8000,5678,8080         ║
+# ║  2. Use docker-compose.yml (bridge mode) instead for multi-user setups  ║
+# ║  3. Only use on isolated/trusted networks                               ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+x-common-env: &common-env
+  HF_HOME: /data/huggingface
+  TRANSFORMERS_CACHE: /data/huggingface
+  VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+
+services:
+  # ============================================================================
+  # Local LLM Inference (vLLM)
+  # ============================================================================
+  vllm:
+    image: vllm/vllm-openai:v0.15.1  # CVE-2024-12224 fixed in v0.15.1
+    container_name: dream-vllm-local
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      <<: *common-env
+      CUDA_VISIBLE_DEVICES: "0"
+    command: >
+      --model Qwen/Qwen2.5-32B-Instruct-AWQ
+      ${VLLM_QUANTIZATION:+--quantization $VLLM_QUANTIZATION}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-8192}
+      --gpu-memory-utilization 0.92
+      --enforce-eager
+      --disable-custom-kernels
+      --host 0.0.0.0
+      --port 8000
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+    volumes:
+      - ${DREAM_DATA_DIR:-./data}:/data
+      - ${DREAM_MODELS_DIR:-./models}:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+
+  # ============================================================================
+  # Whisper Speech-to-Text (STT)
+  # ============================================================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: dream-whisper-local
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - DEVICE=cpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+
+  # ============================================================================
+  # Kokoro Text-to-Speech (TTS)
+  # ============================================================================
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi:v0.6.2-gpu
+    container_name: dream-tts-local
+    restart: unless-stopped
+    ports:
+      - "${TTS_PORT:-8880}:8880"
+    environment:
+      - DEVICE=cuda
+      - MAX_WORKERS=4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+
+  # ============================================================================
+  # Open WebUI (Chat Interface)
+  # ============================================================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: dream-webui-local
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - OPENAI_API_BASE_URL=http://localhost:8000/v1
+      - OPENAI_API_KEY=dummy-key
+      - WEBUI_NAME=Dream Server (Local Mode)
+    volumes:
+      - ./config/open-webui:/app/backend/data
+
+  # ============================================================================
+  # n8n Workflow Automation
+  # ============================================================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: dream-n8n-local
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+    volumes:
+      - ./config/n8n:/home/node/.n8n

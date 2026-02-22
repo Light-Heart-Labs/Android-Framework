@@ -1,0 +1,216 @@
+# Dream Server - Edge Configuration
+# Lightweight setup for: Pi 5, Mac Mini, Consumer laptops
+# Target: 8-16GB RAM, No GPU or Apple Silicon
+# 
+# Usage: docker compose -f docker-compose.edge.yml up -d
+
+services:
+  # ============================================
+  # LLM Inference (Ollama - CPU/Metal friendly)
+  # ============================================
+  ollama:
+    image: ollama/ollama:0.4.4  # Latest stable
+    container_name: dream-ollama
+    restart: unless-stopped
+    user: "1000:1000"  # Run as non-root
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=/models
+      # For Apple Silicon Macs, enable Metal:
+      # - OLLAMA_GPU_DRIVER=metal
+    volumes:
+      - ./models/ollama:/models
+      - ./data/ollama:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Model Bootstrap (first-run only)
+  # ============================================
+  model-bootstrap:
+    image: ollama/ollama:0.4.4
+    container_name: dream-bootstrap
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    # Default: Qwen2.5-3B for 8GB systems
+    # For 16GB+: Change to qwen2.5:7b or llama3.2:8b
+    entrypoint: >
+      sh -c "
+        ollama pull ${LLM_MODEL:-qwen2.5:3b} &&
+        echo 'Model ready!'
+      "
+    profiles:
+      - bootstrap
+
+  # ============================================
+  # Chat UI (Open WebUI)
+  # ============================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.7.2
+    container_name: dream-webui
+    restart: unless-stopped
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_BASE_URL=
+      - WEBUI_AUTH=${WEBUI_AUTH:-false}  # Simpler for home use
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET:?WEBUI_SECRET must be set in .env}
+      - ENABLE_RAG_WEB_SEARCH=false
+    volumes:
+      - ./data/open-webui:/app/backend/data
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================
+  # Speech-to-Text (Whisper.cpp - CPU)
+  # ============================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:v1.4.1
+    container_name: dream-whisper
+    restart: unless-stopped
+    user: "1000:1000"  # Run as non-root
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Use tiny or base for edge devices:
+      # - tiny: ~39M params, fastest, ~2s latency on Pi 5
+      # - base: ~74M params, better accuracy, ~3s on Pi 5
+      - ASR_MODEL=${WHISPER_MODEL:-tiny}
+      - ASR_ENGINE=faster_whisper
+    volumes:
+      - ./data/whisper:/root/.cache
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    profiles:
+      - voice
+    # CPU-only: no GPU reservation
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Longer startup for CPU
+
+  # ============================================
+  # Text-to-Speech (Kokoro TTS - consistent with all other modes)
+  # ============================================
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi:v0.6.2-cpu
+    container_name: dream-tts
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - DEVICE=cpu
+      - MAX_WORKERS=2
+    volumes:
+      - ./data/kokoro:/app/data
+    ports:
+      - "${TTS_PORT:-8880}:8880"
+    profiles:
+      - voice
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/v1/audio/voices"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # Workflow Automation (optional)
+  # ============================================
+  n8n:
+    image: n8nio/n8n:2.6.4
+    container_name: dream-n8n
+    restart: unless-stopped
+    user: "1000:1000"  # Run as non-root
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_AUTH:-false}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=${TIMEZONE:-UTC}
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    profiles:
+      - workflows
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  ollama-models:
+  ollama-data:
+  webui-data:
+  whisper-cache:
+  n8n-data:
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  default:
+    name: dream-edge
+    driver: bridge
