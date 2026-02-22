@@ -21,8 +21,21 @@ One installer gets you from bare metal to a fully running local AI stack — LLM
 curl -fsSL https://raw.githubusercontent.com/Light-Heart-Labs/Lighthouse-AI/main/dream-server/get-dream-server.sh | bash
 ```
 
-<!-- TODO: Add terminal recording GIF here — run `install.sh`, show bootstrap mode, open dashboard + chat -->
-<!-- Recommended: https://github.com/charmbracelet/vhs or asciinema for terminal recording -->
+<p align="center">
+  <img src="docs/images/dream-server-install.png" alt="Dream Server installer — auto-detects GPU, recommends model tier, and lets you choose your stack" width="800">
+  <br>
+  <em>The installer detects your hardware, picks the optimal model, and asks how deep you want to go.</em>
+</p>
+
+---
+
+## Dashboard
+
+Everything running, at a glance. GPU metrics, service health, one-click access to Chat, Voice, Workflows, Agents, and Documents.
+
+<p align="center">
+  <img src="docs/images/dream-server-dashboard.png" alt="Dream Server dashboard — GPU metrics, service status, feature cards" width="800">
+</p>
 
 ---
 
